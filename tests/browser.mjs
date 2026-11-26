@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { ATTACHMENTS, BOARD, PEEL_DIRECTION, seamPoint } from '../src/geometry.js';
+import { ATTACHMENTS, BOARD, PEEL_DIRECTION, TUNING, seamPoint } from '../src/geometry.js';
 
 const baseUrl = process.env.AURELAC_TEST_URL ?? 'http://127.0.0.1:3000';
 const executablePath = process.env.AURELAC_CHROMIUM
@@ -127,11 +127,27 @@ async function checkFit(page) {
   }
 }
 
+async function expectStatus(page, text, timeout = 1600) {
+  await page.waitForFunction((needle) => document.querySelector('#feedback').textContent.includes(needle),
+    text, { timeout });
+}
+
+async function expectIntact(page) {
+  assert.equal(await page.getByRole('button', { name: 'Blade' }).getAttribute('aria-pressed'), 'true');
+  await expectStatus(page, 'specimen is intact');
+  await expectCleanLobe(page);
+}
+
+const finishedSection = (index) => index + TUNING.attachmentsPerSection === ATTACHMENTS.length
+  ? 'membrane is free'
+  : 'One section came free';
+
 try {
   await mkdir('playtest-results', { recursive: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const desktopErrors = await setUp(page);
   await checkFit(page);
+  await expectIntact(page);
   await screenshot(page, 'desktop-intact');
   await page.getByRole('button', { name: 'Field guide' }).click();
   assert.ok(await page.getByRole('dialog').isVisible());
@@ -142,31 +158,49 @@ try {
   await selectTool(page, 'Diffuser');
   await expectSplash(page);
   await trace(page, 0.36, 0.68, pinkSurface);
-  assert.match(await page.locator('#bench-note').textContent(), /fold is wet/);
+  await expectStatus(page, 'fold is glossy');
   await screenshot(page, 'desktop-wet');
   await selectTool(page, 'Grip');
-  await startPeel(page, 57);
-  await screenshot(page, 'desktop-caught');
-  assert.match(await page.getByRole('status').textContent(), /caught on the husk/);
+  await startPeel(page, 53);
+  await expectStatus(page, 'caught on the husk');
   await page.mouse.up();
   await selectTool(page, 'Blade');
   await trace(page, 0.63, 0.91);
-  await selectTool(page, 'Grip');
-  await startPeel(page, -65);
-  assert.match(await page.getByRole('status').textContent(), /bunches/);
-  await screenshot(page, 'desktop-fold-bunched');
-  await page.mouse.up();
-  await startPeel(page, 75);
-  await page.getByText('The membrane is free. The carrom lobe is exposed.').first().waitFor();
-  await page.mouse.up();
-  assert.match(await page.locator('#bench-note').textContent(), /membrane is free/);
+
+  for (let index = 0; index < ATTACHMENTS.length; index += TUNING.attachmentsPerSection) {
+    await selectTool(page, 'Diffuser');
+    await trace(page, 0.33, 0.69, pinkSurface);
+    await expectStatus(page, 'fold is glossy');
+    await selectTool(page, 'Grip');
+    if (index === 0) {
+      await startPeel(page, -48);
+      await expectStatus(page, 'bunches');
+      await page.mouse.up();
+    }
+    await startPeel(page, 53, index);
+    await expectStatus(page, finishedSection(index));
+    await page.mouse.up();
+  }
   await expectCleanLobe(page);
   await screenshot(page, 'desktop-clean-peel');
 
   await page.setViewportSize({ width: 320, height: 640 });
   await page.getByRole('button', { name: 'Reset node' }).click();
   await checkFit(page);
+  await expectIntact(page);
   await screenshot(page, 'narrow-intact');
+  await trace(page, 0.2, 0.84);
+  await selectTool(page, 'Diffuser');
+  await trace(page, 0.34, 0.69, pinkSurface);
+  await expectStatus(page, 'fold is glossy');
+  await screenshot(page, 'narrow-wet-fold');
+  await expectStatus(page, 'sheen has faded', TUNING.dryingTime + 500);
+  await screenshot(page, 'narrow-dry-fold');
+  await selectTool(page, 'Grip');
+  await startPeel(page, 50);
+  await expectStatus(page, 'dry section tears');
+  await page.mouse.up();
+  await screenshot(page, 'narrow-dry-tear');
   assert.deepEqual(desktopErrors, []);
 
   const touch = await browser.newPage({
@@ -174,28 +208,36 @@ try {
   });
   const touchErrors = await setUp(touch, '/?playtest=starter');
   await checkFit(touch);
-  assert.equal(await touch.getByRole('button', { name: 'Grip' }).getAttribute('aria-pressed'), 'true');
+  await expectIntact(touch);
   assert.ok(await touch.getByRole('button', { name: 'Field guide' }).isHidden());
   const cdp = await touch.context().newCDPSession(touch);
+  const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+
+  async function swipe(positions, result) {
+    const samples = await Promise.all(positions.map((position) => boardPoint(touch, position)));
+    await send('touchStart', [samples[0]]);
+    for (const sample of samples.slice(1)) await send('touchMove', [sample]);
+    if (result) await expectStatus(touch, result);
+    await send('touchEnd', []);
+  }
+
+  await swipe([0.34, 0.4, 0.47, 0.54, 0.61, 0.68].map(seamPoint));
+  await selectTool(touch, 'Diffuser', 'touch');
+  const wetSweep = [0.33, 0.4, 0.47, 0.54, 0.61, 0.69].map(pinkSurface);
+  await swipe(wetSweep);
+  await expectStatus(touch, 'fold is glossy');
+  await selectTool(touch, 'Grip', 'touch');
+
   const first = await boardPoint(touch, handle());
   const second = await boardPoint(touch, { x: 256, y: 259 });
-  const safePull = await boardPoint(touch, target(56));
-  const forcedPull = await boardPoint(touch, target(143));
-  const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  const safePull = await boardPoint(touch, target(53));
   await send('touchStart', [{ ...first, id: 1 }]);
   await send('touchStart', [{ ...first, id: 1 }, { ...second, id: 2 }]);
   await send('touchMove', [{ ...safePull, id: 1 }, { ...second, id: 2 }]);
-  await screenshot(touch, 'touch-caught');
+  await expectStatus(touch, 'caught on the husk');
   await send('touchCancel', []);
-  assert.match(await touch.getByRole('status').textContent(), /caught on the husk/);
 
-  await send('touchStart', [{ ...first, id: 3 }]);
-  await send('touchMove', [{ ...forcedPull, id: 3 }]);
-  await send('touchEnd', []);
-  assert.match(await touch.getByRole('status').textContent(), /tears/);
-  await screenshot(touch, 'touch-tear');
-
-  // Reproduce the recovery on the same specimen after resizing while the blade is down.
+  // Resize while the blade is down. The stroke should end without extending the slit.
   await selectTool(touch, 'Blade');
   const bladeStart = await boardPoint(touch, seamPoint(0.65));
   await touch.mouse.move(bladeStart.x, bladeStart.y);
@@ -207,42 +249,22 @@ try {
   const bladeEnd = await boardPoint(touch, seamPoint(0.99));
   await touch.mouse.move(bladeEnd.x, bladeEnd.y);
   await touch.mouse.up();
-  assert.match(await touch.getByRole('status').textContent(), /tears/);
-  await trace(touch, 0.63, 0.99);
-  await selectTool(touch, 'Diffuser');
-  await trace(touch, 0.34, 0.69);
-  await selectTool(touch, 'Grip');
-  await startPeel(touch, 74, 1);
-  await touch.waitForFunction(() => document.querySelector('#feedback').textContent.includes('remnant remains'));
-  await touch.mouse.up();
-  assert.match(await touch.locator('#bench-note').textContent(), /remnant remains/);
-  await screenshot(touch, 'touch-exposed-with-remnant');
-  await touch.getByRole('button', { name: 'Reset node' }).click();
-  assert.match(await touch.getByRole('status').textContent(), /Starter slit restored/);
+  await expectStatus(touch, 'caught on the husk');
+  await swipe([0.63, 0.7, 0.77, 0.84, 0.91].map(seamPoint));
 
-  // Complete the starter node with touch input for each tool.
-  async function swipe(positions, settle = false) {
-    const samples = await Promise.all(positions.map((position) => boardPoint(touch, position)));
-    await send('touchStart', [samples[0]]);
-    for (const sample of samples.slice(1)) await send('touchMove', [sample]);
-    if (settle) {
-      await touch.waitForFunction(() => document.querySelector('#feedback').textContent.includes('membrane is free'));
-    }
-    await send('touchEnd', []);
+  for (let index = 0; index < ATTACHMENTS.length; index += TUNING.attachmentsPerSection) {
+    await selectTool(touch, 'Diffuser', 'touch');
+    await swipe(wetSweep);
+    await expectStatus(touch, 'fold is glossy');
+    await selectTool(touch, 'Grip', 'touch');
+    await swipe([handle(index), target(24, index), target(53, index)], finishedSection(index));
   }
-  await selectTool(touch, 'Blade', 'touch');
-  await swipe([0.62, 0.69, 0.76, 0.83, 0.9].map(seamPoint));
-  await selectTool(touch, 'Diffuser', 'touch');
-  await swipe([0.36, 0.43, 0.5, 0.57, 0.64, 0.69].map(pinkSurface));
-  assert.match(await touch.getByRole('status').textContent(), /fold is wet/);
-  await selectTool(touch, 'Grip', 'touch');
-  const start = handle();
-  await swipe([start, { x: start.x + 31, y: start.y + 10 }, { x: start.x + 72, y: start.y + 22 }], true);
-  assert.match(await touch.getByRole('status').textContent(), /membrane is free/);
   await expectCleanLobe(touch);
   await screenshot(touch, 'touch-clean-peel');
+  await touch.getByRole('button', { name: 'Reset node' }).click();
+  await expectIntact(touch);
   assert.deepEqual(touchErrors, []);
-  console.log(`Passed desktop pointer, 320px layout, mobile touch and two-finger interruption in Chromium ${browser.version()}.`);
+  console.log(`Passed closed starts, three clean sections, drying, dry tears, and interrupted touch in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }

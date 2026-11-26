@@ -1,11 +1,10 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
-import { TOOLS, beginGesture, continuePeel, createSpecimen, exposed, moveGesture, peelIsWet } from './specimen.js';
+import { TOOLS, beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { createRenderer } from './render.js';
 
 const params = new URLSearchParams(location.search);
 const playtest = ['starter', 'intact'].includes(params.get('playtest'));
-const starter = params.get('playtest') === 'starter';
 const debug = params.get('debug') === '1';
 if (playtest) document.documentElement.classList.add('playtest');
 
@@ -19,24 +18,28 @@ const renderer = createRenderer(canvas, {
   reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
 });
 
-let specimen = createSpecimen({ starter });
-let tool = starter ? 'grip' : 'blade';
+let specimen = createSpecimen();
+let tool = 'blade';
 let gesture = null;
 let primary = null;
 let anchor = null;
 let frame = null;
+let dryingTimer = null;
 
 const messages = {
   cut: 'Pink tissue is exposed. Sweep it with the diffuser.',
   nick: 'The blade nicked the membrane. Keep the next cut on the crease.',
   wet: 'The membrane shines where it is wet. Sweep toward any matte patches.',
-  soaked: 'The fold is wet and the edge has lifted.',
+  soaked: 'The fold is glossy and the edge has lifted.',
+  dried: 'The sheen has faded. Wet the fold again before pulling.',
   husk: 'The flap caught on the husk. Extend the slit from either end.',
-  dry: 'A dry fold is holding the flap. Sweep the diffuser over the matte pink tissue.',
+  dry: 'The matte fold feels brittle. Reapply diffuser.',
   angle: 'The fold bunches under the grip.',
   grab: 'Grab the raised pink edge.',
   peeled: 'The membrane is free. The carrom lobe is exposed.',
-  tear: 'The membrane tears and leaves a pink remnant.',
+  piece: 'One section came free. Wet the next fold.',
+  tear: 'The section tears and leaves a ragged remnant.',
+  'dry-tear': 'The dry section tears and leaves a ragged remnant.',
 };
 
 const toolHints = {
@@ -52,12 +55,18 @@ function report(text) {
 
 function render(time) {
   frame = null;
-  if (gesture?.pull?.settling) reportInteraction(continuePeel(specimen, gesture, time), time);
+  const wasWet = peelIsWet(specimen);
+  const drying = dryMembrane(specimen, time);
+  if (wasWet && !peelIsWet(specimen)) report(messages.dried);
+  if (gesture?.pull && !gesture.finished) reportInteraction(continuePeel(specimen, gesture, time), time);
   const animating = renderer.draw(specimen, gesture, time);
   if (animating || gesture?.pull?.settling) requestRender();
+  else if (drying) dryingTimer = setTimeout(requestRender, 65);
 }
 
 function requestRender() {
+  clearTimeout(dryingTimer);
+  dryingTimer = null;
   frame ??= requestAnimationFrame(render);
 }
 
@@ -80,9 +89,9 @@ function finishGesture() {
 
 function reset() {
   finishGesture();
-  specimen = createSpecimen({ starter });
-  tool = starter ? 'grip' : 'blade';
-  feedback.textContent = starter ? 'Starter slit restored.' : 'The specimen is intact.';
+  specimen = createSpecimen();
+  tool = 'blade';
+  feedback.textContent = 'The specimen is intact.';
   note.textContent = toolHints[tool];
   renderer.clearMotion();
   updateTool();
@@ -133,13 +142,14 @@ canvas.addEventListener('pointermove', (event) => {
 
 function reportInteraction(result, time) {
   const pull = gesture.pull;
-  if (result === 'peeled') {
+  if (result === 'peeled' || result === 'piece') {
     renderer.detach(pull.target);
-    const torn = specimen.attachments.some(({ state }) => state === 'torn');
-    report(torn ? 'Carrom lobe exposed. A pink remnant remains.' : messages.peeled);
-  } else if (result === 'tear') {
-    report(messages.tear);
-  } else if (!pull?.torn && pull?.catch && pull.load >= 0.14) {
+    const damaged = result === 'peeled' && specimen.attachments.some(({ state }) => state === 'torn');
+    report(damaged ? 'Carrom lobe exposed. Ragged remnants remain.' : messages[result]);
+  } else if (result === 'tear' || result === 'dry-tear') {
+    renderer.detach(pull.target, true);
+    report(exposed(specimen) ? 'The last section tears. The carrom lobe is exposed with ragged remnants.' : messages[result]);
+  } else if (!gesture.finished && pull?.catch && pull.load >= 0.14) {
     report(messages[pull.catch]);
   } else if (result === 'wet') {
     renderer.splash(gesture.wetContact, time);

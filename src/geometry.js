@@ -13,16 +13,18 @@ export const TUNING = {
   contactStep: 3,
   bladeTravel: 4,
   usefulOpening: 0.53,
-  starterCut: [22, 43],
   minimumWetness: 0.46,
+  dryingTime: 10500,
+  attachmentsPerSection: 4,
   peelAlignment: 0.72,
-  peelThreshold: 17,
-  peelPerAttachment: 3.9,
-  peelRate: 0.32,
+  peelThreshold: 18,
+  peelPerAttachment: 8,
+  peelRate: 0.28,
   elasticLimit: 74,
   wetRecovery: 13,
   tearInput: 120,
-  tearSeparation: 24,
+  dryTearInput: 29,
+  wetYankInput: 57,
 };
 
 export function point(x, y) {

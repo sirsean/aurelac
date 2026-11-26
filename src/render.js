@@ -264,8 +264,25 @@ function drawMembrane(ctx, specimen, pose) {
     const looseFold = new Path2D('M110 152Q130 175 156 172T197 190T234 198');
     line(ctx, looseFold, '#f3b5a482', 1.5);
   }
+  drawSectionFolds(ctx, front);
   drawWetness(ctx, specimen);
   ctx.restore();
+}
+
+function drawSectionFolds(ctx, front) {
+  const size = TUNING.attachmentsPerSection;
+  for (let boundary = size; boundary < ATTACHMENTS.length; boundary += size) {
+    if (boundary <= front) continue;
+    const { x, y } = between(ATTACHMENTS[boundary - 1], ATTACHMENTS[boundary], 0.5);
+    const fold = new Path2D();
+    fold.moveTo(x + 21, y - 37);
+    fold.bezierCurveTo(x - 1, y - 18, x + 9, y + 9, x - 21, y + 35);
+    line(ctx, fold, '#76433d70', 2.8);
+    ctx.save();
+    ctx.translate(1, 1.7);
+    line(ctx, fold, '#efb2a3a8', 1.2);
+    ctx.restore();
+  }
 }
 
 function distanceSquared(a, b) {
@@ -273,29 +290,31 @@ function distanceSquared(a, b) {
 }
 
 function drawWetness(ctx, specimen) {
-  const glints = new Path2D();
   for (const [index, attachment] of specimen.attachments.entries()) {
     if (attachment.state !== 'attached' || attachment.wetness <= 0) continue;
     const { x, y } = ATTACHMENTS[index];
     const wash = ctx.createRadialGradient(x, y + 6, 1, x, y + 6, 27);
     wash.addColorStop(0, '#713d4392');
     wash.addColorStop(1, '#713d4300');
-    ctx.globalAlpha = attachment.wetness * 0.58;
+    ctx.globalAlpha = attachment.wetness * 0.67;
     ctx.fillStyle = wash;
     ctx.fillRect(x - 27, y - 21, 54, 54);
 
-    if (attachment.wetness >= TUNING.minimumWetness && index % 2 === 0) {
+    const gleam = clamp((attachment.wetness - TUNING.minimumWetness) / (1 - TUNING.minimumWetness));
+    if (gleam && index % 2 === 0) {
+      const glints = new Path2D();
       const length = index % 3 === 0 ? 17 : 9;
       glints.moveTo(x - 4, y + 6);
-      glints.quadraticCurveTo(x + 3, y + 4, x + length, y + 8);
+      glints.quadraticCurveTo(x + 3, y + 4, x + length * (0.45 + 0.55 * gleam), y + 8);
       if (index % 3 === 0) {
         glints.moveTo(x + 4, y + 14);
         glints.lineTo(x + 5.7, y + 14.8);
       }
+      ctx.globalAlpha = gleam;
+      line(ctx, glints, '#ffdbc7eb', 2.6);
     }
   }
   ctx.globalAlpha = 1;
-  line(ctx, glints, '#ffdbc7eb', 2.6);
 }
 
 function drawDiffuserContact(ctx, gesture) {
@@ -365,7 +384,15 @@ function drawFlap(ctx, specimen, ranges, pose) {
   const edge = new Path2D();
   edge.moveTo(length - rim * 0.65, -width * 0.92);
   edge.bezierCurveTo(length + rim, -width, length + rim * 1.2, width * 0.22, length, width * 0.64);
-  line(ctx, edge, '#ffe1ca', 1.15 + wet * 1.15);
+  line(ctx, edge, wet >= TUNING.minimumWetness ? '#ffe1ca' : '#d19584', 0.85 + wet * 1.45);
+  const gleam = clamp((wet - TUNING.minimumWetness) / (1 - TUNING.minimumWetness));
+  if (gleam) {
+    const sheen = new Path2D();
+    sheen.moveTo(length * 0.24, -width * 0.44);
+    sheen.quadraticCurveTo(length * 0.54, -width * 0.83, length - rim * 0.55, -width * 0.75);
+    ctx.globalAlpha = gleam;
+    line(ctx, sheen, '#ffead4', 2.2);
+  }
   ctx.restore();
 
   if (pose?.catch && tension > 0.15) {
@@ -375,12 +402,16 @@ function drawFlap(ctx, specimen, ranges, pose) {
   }
 }
 
-function drawDetachedFlap(ctx, tip, progress) {
-  const curl = new Path2D('M-16 19C-12 3 2-13 23-12C39-11 40 8 24 13C11 17 7 8 1 14C-4 19-9 28-18 27Z');
-  const edge = new Path2D('M-13 20C-7 2 9-11 27-7C35-5 35 5 28 7C15 10 11 0 3 8');
+function drawDetachedFlap(ctx, tip, progress, torn) {
+  const curl = new Path2D(torn
+    ? 'M-16 19L-8 11L-12 7L1 4L-2-3L11-3L10-9C23-16 39-8 35 3C31 14 14 18 3 15L-1 23L-7 19L-18 27Z'
+    : 'M-16 19C-12 3 2-13 23-12C39-11 40 8 24 13C11 17 7 8 1 14C-4 19-9 28-18 27Z');
+  const edge = new Path2D(torn
+    ? 'M12-8C28-15 38-3 30 5C26 9 21 11 18 10'
+    : 'M-13 20C-7 2 9-11 27-7C35-5 35 5 28 7C15 10 11 0 3 8');
   ctx.save();
   ctx.translate(tip.x + PEEL_DIRECTION.x * 74 * progress, tip.y + PEEL_DIRECTION.y * 74 * progress);
-  ctx.rotate(0.8 * progress);
+  ctx.rotate((torn ? -1.5 : 0.8) * progress);
   ctx.scale(1 - 0.34 * progress, 1 - 0.34 * progress);
   ctx.globalAlpha = 1 - progress;
   fill(ctx, curl, radial(ctx, 13, 2, 36, materials.membrane));
@@ -520,9 +551,9 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     const handle = peelHandle(specimen);
     const finished = exposed(specimen);
 
-    if (finished) {
+    if (finished || gesture?.finished) {
       pose = null;
-    } else if (pull && !pull.torn) {
+    } else if (pull) {
       pose = pull;
     } else if (pose && handle && !reducedMotion) {
       const decay = 1 - Math.exp(-elapsed / 52);
@@ -554,19 +585,20 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     if (release) {
       release.start ??= time;
       const progress = clamp((time - release.start) / 240);
-      if (progress < 1) drawDetachedFlap(ctx, release.tip, progress);
+      if (progress < 1) drawDetachedFlap(ctx, release.tip, progress, release.torn);
       else release = null;
     }
     const splashing = splash.draw(ctx, time);
     if (debug) drawDebug(ctx, specimen, pose);
-    return splashing || Boolean(release || (pose && (!pull || pull.torn)));
+    return splashing || Boolean(release || (pose && !pull));
   }
 
   return {
     draw,
     splash: splash.add,
-    detach(tip) {
-      if (!reducedMotion) release = { tip, start: null };
+    detach(tip, torn = false) {
+      pose = null;
+      if (!reducedMotion) release = { tip, torn, start: null };
     },
     clearMotion() {
       pose = null;

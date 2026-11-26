@@ -36,15 +36,17 @@ Cloudflare manages DNS and certificates for these exact Worker Custom Domains. T
 
 ## Prototype playtest
 
-Run `/?playtest=starter` on a portrait phone with first-time players. It starts with a short slit, a loose corner, and Grip selected. The field guide and bench captions are hidden. Ask, “Can you get the orange lobe free in one piece?” Record the first wrong move, where the player thinks the flap is caught, what they try next, and whether they recover without prompting. Show a clean release and a tear separately and ask which left tissue behind.
+Run `/?playtest=intact` on a portrait phone with first-time players. The standard bench and the caption-free playtest both start with a closed husk and Blade selected. The earlier `/?playtest=starter` link opens the same caption-free bench. Ask, “Can you expose the orange lobe without leaving pink tissue behind?” Record how they find the crease, where they think the flap catches, what they try next, and whether they recover without prompting. Show a clean section and a tear separately and ask which left tissue behind.
 
-Use `/?playtest=intact` to check whether a new player can find and cut the crease unaided. Reset restores the starting condition for either route. The proposed gate is at least three uncoached recoveries among five new players. Record device, viewport, whether they used one or two fingers, and any missed grab. When players recognize the lip but miss the flap, adjust the grip target. When they miss the lip itself, adjust the pose and silhouette.
+Reset restores the closed specimen in either mode. The proposed gate is at least three uncoached recoveries among five new players. Record device, viewport, whether they used one or two fingers, and any missed grab. When players recognize the lip but miss the flap, adjust the grip target. When they miss the lip itself, adjust the pose and silhouette.
 
 ### Verification on 2026-11-26
 
 The model suite covers short-slit recovery from either end, dry catches, outward pulls, localized remnants, nicks, and sparse versus dense input sampling. Chromium 156 was exercised at 1280 × 900 with mouse input, at a narrow 320 × 640 viewport, and at 390 × 844 and 375 × 800 with touch emulation. The browser test completed a clean peel, interrupted a two-finger gesture, forced a tear, resized mid-stroke, and completed the damaged peel without resetting. A manual run on the published starter bench still caught after the first extension. Cutting the opposite end and rewetting the margin freed the flap. Fresh-player results and physical-phone performance are pending.
 
-After playtest feedback, the diffuser accepts a sweep across the exposed membrane. It splashes on contact and leaves a sheen when the tool changes. The raised lip opens toward the right. Pulling it outward under steady tension releases the fold, while pulling back into the opening bunches it. Model tests cover a quick flick and sustained tension. Browser checks cover the moving splash, a clean peel on touch, and the detached curl leaving the tray.
+The diffuser splashes on the exposed membrane. The sheen weakens as the fold dries, and the lip settles. Each of the three sections has its own exposed fold to wet. A fully soaked fold starts falling below the safe wetness threshold after about six seconds. An outward pull under steady tension releases one section. A sharp yank or a pull on a brittle fold leaves a ragged remnant.
+
+Model tests cover the closed start, one section per grip, timed drying and refreshing, and the clean and torn paths. Browser checks exercise the closed start and reset, the fade and dry tear, and three clean sections with mouse and emulated touch.
 
 ## After the prototype gate
 
