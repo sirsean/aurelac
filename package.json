@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0 --port 3000 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000 --strictPort",
-    "test": "node --test --test-isolation=none",
+    "test": "node --test",
     "deploy": "node scripts/deploy.mjs",
     "test:browser": "node tests/browser.mjs"
   },
