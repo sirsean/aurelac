@@ -50,6 +50,11 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   specimen.wetnessTime += shift;
   dryMembrane(specimen, clock);
   harvest.intrinsic = node.pearl;
+  for (const coating of harvest.pearl.coating) {
+    coating.treatment ??= coating.treated ? 1 : 0;
+    coating.undercoat ??= 0;
+    delete coating.treated;
+  }
   for (const blister of harvest.blisters) {
     blister.started += shift;
     blister.timing = node.timing;

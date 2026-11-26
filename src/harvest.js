@@ -8,6 +8,7 @@ export const CASE_CENTER = point(291, 215);
 const nickAt = 10;
 const ruptureAt = 29;
 const foldLength = 24;
+const sprayDuration = 450;
 
 export const COATING_PATCHES = [
   { x: -16, y: -17, radius: 14 }, { x: 0, y: -20, radius: 13 }, { x: 17, y: -15, radius: 13 },
@@ -16,7 +17,7 @@ export const COATING_PATCHES = [
   { x: 16, y: 16, radius: 12 }, { x: -1, y: 27, radius: 10 },
 ];
 
-export function createHarvest(seed = COMMON_NODE.seed) {
+export function createHarvest(seed = COMMON_NODE.seed, undercoatPatch = -1) {
   const node = nodeFor(seed);
   return {
     seed: node.seed,
@@ -28,7 +29,9 @@ export function createHarvest(seed = COMMON_NODE.seed) {
     damage: { membrane: 0, scars: [], chipped: false },
     pearl: {
       rotation: 0, position: PEARL_CENTER, scale: node.pearl.scale,
-      coating: COATING_PATCHES.map(() => ({ treated: false, amount: 1 })),
+      coating: COATING_PATCHES.map((_, index) => ({
+        treatment: 0, amount: 1, undercoat: index === undercoatPatch ? 0.38 : 0,
+      })),
     },
     light: false,
     placement: 'tray',
@@ -106,13 +109,26 @@ export function dragClearsOpening(harvest, location) {
   return distance(location, SEAM[index]) > openingHalfWidth(opening, index) + 10;
 }
 
-function sprayPearl(pearl, location) {
-  if (distance(location, pearl.position) > 35 * pearl.scale) return false;
-  for (const [index, patch] of COATING_PATCHES.entries()) {
-    const center = point(pearl.position.x + patch.x * pearl.scale, pearl.position.y + patch.y * pearl.scale);
-    if (distance(location, center) < (23 + patch.radius * 0.45) * pearl.scale) pearl.coating[index].treated = true;
+function sprayPearl(pearl, gesture, location, time) {
+  const elapsed = clamp(time - gesture.sprayTime, 0, 80);
+  gesture.sprayTime = Math.max(time, gesture.sprayTime);
+  gesture.sprayContact = distance(location, pearl.position) <= 35 * pearl.scale ? location : null;
+  if (elapsed > 0) {
+    const samples = Math.max(1, Math.ceil(distance(gesture.last, location) / 4));
+    for (let sample = 0; sample < samples; sample++) {
+      const contact = between(gesture.last, location, (sample + 0.5) / samples);
+      if (distance(contact, pearl.position) > 35 * pearl.scale) continue;
+      for (const [index, patch] of COATING_PATCHES.entries()) {
+        const coating = pearl.coating[index];
+        if (!coating.amount || coating.treatment === 1) continue;
+        const center = point(pearl.position.x + patch.x * pearl.scale, pearl.position.y + patch.y * pearl.scale);
+        const reach = (21 + patch.radius * 0.35) * pearl.scale;
+        const coverage = Math.max(0, 1 - (distance(contact, center) / reach) ** 2);
+        coating.treatment = clamp(coating.treatment + coverage * elapsed / (samples * sprayDuration));
+      }
+    }
   }
-  return true;
+  return gesture.sprayContact ? 'fazer' : null;
 }
 
 function wipePearl(pearl, from, to) {
@@ -120,6 +136,7 @@ function wipePearl(pearl, from, to) {
   const samples = Math.ceil(travel / 3);
   let wiped = false;
   let sticky = false;
+  let revealed = false;
   for (let index = 1; index <= samples; index++) {
     const contact = between(from, to, index / samples);
     if (distance(contact, pearl.position) > 35 * pearl.scale) continue;
@@ -129,14 +146,21 @@ function wipePearl(pearl, from, to) {
       const reach = (patch.radius + 10) * pearl.scale;
       const gap = distance(contact, center);
       if (gap >= reach || coating.amount === 0) continue;
-      if (coating.treated) {
-        coating.amount = Math.max(0, coating.amount - (travel / samples) * (1 - gap / reach) / (14 * pearl.scale));
+      if (coating.treatment === 1) {
+        const removed = (travel / samples) * (1 - gap / reach) / (14 * pearl.scale);
+        coating.amount = Math.max(coating.undercoat, coating.amount - removed);
+        if (coating.undercoat > 0 && coating.amount === coating.undercoat) {
+          coating.undercoat = 0;
+          coating.treatment = 0;
+          revealed = true;
+        }
         wiped = true;
       } else {
         sticky = true;
       }
     }
   }
+  if (revealed) return 'coating-undercoat';
   return wiped ? 'coating-wiped' : sticky ? 'coating-sticky' : null;
 }
 
@@ -144,7 +168,7 @@ export function pearlIsClean(harvest) {
   return harvest.pearl.coating.every(({ amount }) => amount === 0);
 }
 
-export function beginHarvestGesture(harvest, tool, location, blade) {
+export function beginHarvestGesture(harvest, tool, location, blade, time = 0) {
   if (harvest.stage === 'blisters') {
     if (tool !== 'blade' && tool !== 'grip') return null;
     const blister = findBlister(harvest, location, tool);
@@ -153,8 +177,8 @@ export function beginHarvestGesture(harvest, tool, location, blade) {
   }
   if (harvest.stage !== 'pearl' || distance(location, harvest.pearl.position) > Math.max(34, 38 * harvest.pearl.scale)) return null;
   if (tool === 'fazer') {
-    if (!sprayPearl(harvest.pearl, location)) return null;
-    return { tool, last: location, finished: false, sprayContact: location };
+    if (distance(location, harvest.pearl.position) > 35 * harvest.pearl.scale) return null;
+    return { tool, last: location, finished: false, sprayContact: location, sprayTime: time };
   }
   if (tool === 'wipe' || tool === 'case') {
     return { tool, last: location, finished: false, roll: pearlIsClean(harvest) };
@@ -228,14 +252,7 @@ export function moveHarvestGesture(harvest, gesture, location, time) {
   if (gesture.tool === 'case') {
     gesture.preview = location;
   } else if (gesture.tool === 'fazer') {
-    const samples = Math.ceil(distance(gesture.last, location) / 6);
-    for (let index = 1; index <= samples; index++) {
-      const contact = between(gesture.last, location, index / samples);
-      if (sprayPearl(pearl, contact)) {
-        gesture.sprayContact = contact;
-        result = 'fazer';
-      }
-    }
+    result = sprayPearl(pearl, gesture, location, time);
   } else if (gesture.roll) {
     pearl.rotation += (location.x - gesture.last.x) / 33 + (location.y - gesture.last.y) / 80;
   } else {

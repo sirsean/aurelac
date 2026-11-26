@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { point } from '../src/geometry.js';
 import {
-  CASE_CENTER, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
+  CASE_CENTER, COATING_PATCHES, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
   createHarvest, dragClearsOpening, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean,
   readyToLift, storeHarvest,
 } from '../src/harvest.js';
@@ -59,28 +59,65 @@ function wipeRow(harvest, y) {
   return stroke(harvest, 'wipe', pearlPoint(-24, y, scale), pearlPoint(24, y, scale));
 }
 
+function holdSpray(harvest, location, duration) {
+  const gesture = beginHarvestGesture(harvest, 'fazer', location, undefined, 0);
+  for (let time = 25; time <= duration; time += 25) {
+    assert.equal(moveHarvestGesture(harvest, gesture, location, time), 'fazer');
+  }
+  return gesture;
+}
+
 function cleanPearl(harvest) {
   const { scale } = harvest.pearl;
   assert.equal(wipeRow(harvest, 0).event, 'coating-sticky');
   assert.ok(harvest.pearl.coating.every(({ amount }) => amount === 1));
 
-  const first = beginHarvestGesture(harvest, 'fazer', pearlPoint(-15, -16, scale));
-  assert.deepEqual(first.sprayContact, pearlPoint(-15, -16, scale));
-  assert.ok(harvest.pearl.coating.some(({ treated }) => treated));
-  assert.ok(harvest.pearl.coating.some(({ treated }) => !treated));
+  const spot = pearlPoint(-16, -17, scale);
+  assert.deepEqual(holdSpray(harvest, spot, 50).sprayContact, spot);
+  assert.ok(harvest.pearl.coating[0].treatment > 0);
+  assert.ok(harvest.pearl.coating.every(({ treatment }) => treatment < 1));
+  assert.equal(wipeRow(harvest, -16).event, 'coating-sticky');
+  holdSpray(harvest, spot, 450);
+  assert.equal(harvest.pearl.coating[0].treatment, 1);
+  assert.ok(harvest.pearl.coating.some(({ treatment }) => treatment === 0));
 
   wipeRow(harvest, -16);
   assert.ok(harvest.pearl.coating.some(({ amount }) => amount < 1));
   assert.equal(pearlIsClean(harvest), false);
 
-  for (const y of [-18, 0, 20]) stroke(harvest, 'fazer', pearlPoint(-21, y, scale), pearlPoint(21, y, scale));
-  assert.ok(harvest.pearl.coating.every(({ treated }) => treated));
+  for (const { x, y } of COATING_PATCHES) holdSpray(harvest, pearlPoint(x, y, scale), 500);
+  assert.ok(harvest.pearl.coating.every(({ treatment }) => treatment === 1));
   assert.equal(pearlIsClean(harvest), false);
   for (let pass = 0; pass < 3 && !pearlIsClean(harvest); pass++) {
     for (const y of [-21, -9, 5, 18, 24]) wipeRow(harvest, y);
   }
   assert.equal(pearlIsClean(harvest), true);
 }
+
+test('a fast sweep doses the surface briefly, and wiping thick goop exposes a fresh amber layer', () => {
+  const harvest = createHarvest(COMMON_NODE.seed, 0);
+  harvest.stage = 'pearl';
+  const spot = pearlPoint(-16, -17);
+  const start = pearlPoint(-24, -17);
+  const end = pearlPoint(24, -17);
+  const gesture = beginHarvestGesture(harvest, 'fazer', start, undefined, 1000);
+  moveHarvestGesture(harvest, gesture, end, 1030);
+  const patch = harvest.pearl.coating[0];
+  assert.ok(patch.treatment > 0 && patch.treatment < 0.1);
+  assert.equal(wipeRow(harvest, -16).event, 'coating-sticky');
+  assert.equal(patch.amount, 1);
+
+  holdSpray(harvest, spot, 500);
+  assert.equal(wipeRow(harvest, -16).event, 'coating-undercoat');
+  assert.equal(patch.amount, 0.38);
+  assert.equal(patch.treatment, 0);
+  wipeRow(harvest, -16);
+  assert.equal(patch.amount, 0.38);
+
+  holdSpray(harvest, spot, 500);
+  wipeRow(harvest, -16);
+  assert.equal(patch.amount, 0);
+});
 
 function place(harvest, start, end) {
   return finishHarvestGesture(harvest, stroke(harvest, 'case', start, end).gesture);

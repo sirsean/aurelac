@@ -68,6 +68,8 @@ test('a versioned save restores the selected node, damage, tool wear and phase o
   harvest.blisters[0].cut[0] = true;
   harvest.blisters[0].acid = 12;
   harvest.damage.scars.push({ angle: 2, blister: 0 });
+  harvest.pearl.coating[0] = { amount: 0.5, treated: true };
+  harvest.pearl.coating[1] = { amount: 1, treatment: 0.4, undercoat: 0.38 };
   const blade = { wear: 0.71 };
 
   assert.equal(saveWorkbench(storage, { id: 'rare-run', specimen, harvest, blade }, 500, 10000), true);
@@ -81,6 +83,8 @@ test('a versioned save restores the selected node, damage, tool wear and phase o
   assert.equal(resumed.harvest.blisters[0].cut[0], true);
   assert.equal(resumed.harvest.blisters[0].acid, 12);
   assert.deepEqual(resumed.harvest.damage.scars, harvest.damage.scars);
+  assert.deepEqual(resumed.harvest.pearl.coating[0], { amount: 0.5, treatment: 1, undercoat: 0 });
+  assert.deepEqual(resumed.harvest.pearl.coating[1], harvest.pearl.coating[1]);
   assert.deepEqual(blisterPose(resumed.harvest.blisters[0], 50), blisterPose(harvest.blisters[0], 1500));
   assert.equal(resumed.blade.wear, 0.71);
 });

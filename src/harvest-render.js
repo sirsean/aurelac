@@ -1,4 +1,4 @@
-import { BOARD, clamp, point, randomFrom } from './geometry.js';
+import { BOARD, clamp, mix, point, randomFrom } from './geometry.js';
 import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, blisterFold, blisterPose, pearlIsClean, readyToLift } from './harvest.js';
 
 const circle = 2 * Math.PI;
@@ -144,10 +144,23 @@ function drawCase(ctx, closed, scale) {
   ctx.restore();
 }
 
+const coatingPigments = {
+  highlight: [[190, 154, 88], [161, 233, 204]],
+  body: [[144, 112, 68], [97, 159, 141]],
+  shadow: [[88, 65, 50], [60, 109, 99]],
+};
+
+function coatingColor([amber, green], treatment) {
+  const channels = amber.map((channel, index) => Math.round(mix(channel, green[index], treatment)));
+  return `rgb(${channels.join(' ')})`;
+}
+
 function drawCoating(ctx, coating) {
   for (const [index, patch] of COATING_PATCHES.entries()) {
-    const { amount, treated } = coating[index];
+    const { amount, treatment } = coating[index];
     if (!amount) continue;
+    const treated = treatment === 1;
+    const tint = treated ? 1 : treatment * 0.65;
     const radius = patch.radius * Math.sqrt(amount);
     ctx.save();
     ctx.translate(patch.x, patch.y);
@@ -155,9 +168,9 @@ function drawCoating(ctx, coating) {
     ctx.scale(radius, radius);
     ctx.globalAlpha = Math.min(1, amount * 1.75);
     const fill = ctx.createLinearGradient(-0.5, -0.7, 0.4, 0.9);
-    fill.addColorStop(0, treated ? '#a1e9cc' : '#be9a58');
-    fill.addColorStop(0.52, treated ? '#619f8d' : '#907044');
-    fill.addColorStop(1, treated ? '#3c6d63' : '#584132');
+    fill.addColorStop(0, coatingColor(coatingPigments.highlight, tint));
+    fill.addColorStop(0.52, coatingColor(coatingPigments.body, tint));
+    fill.addColorStop(1, coatingColor(coatingPigments.shadow, tint));
     ctx.fillStyle = fill;
     ctx.fill(goop);
     stroke(ctx, goop, treated ? '#466e63bb' : '#624d35aa', 0.055);

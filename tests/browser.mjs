@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { ATTACHMENTS, BOARD, SEAM, TUNING, offset, seamPoint } from '../src/geometry.js';
 import { STONE } from '../src/blade.js';
-import { CASE_CENTER, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
+import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
 import { COMMON_NODE, NODES, nodeCode } from '../src/nodes.js';
 import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
 
@@ -191,6 +191,18 @@ function pearlPoint(x, y) {
   return { x: PEARL_CENTER.x + x, y: PEARL_CENTER.y + y };
 }
 
+async function holdSpray(page, location, duration = 580) {
+  const contact = await boardPoint(page, location);
+  await page.mouse.move(contact.x, contact.y);
+  await page.mouse.down();
+  await page.waitForTimeout(duration);
+  await page.mouse.up();
+}
+
+function savedCoating(page) {
+  return page.evaluate(() => JSON.parse(localStorage.getItem('aurelac.workbench.v1')).harvest.pearl.coating);
+}
+
 async function harvestPearl(page, strokes, opened, outcome) {
   const { blisters, pocket } = blistersFor(strokes);
   for (const blister of blisters) {
@@ -231,20 +243,33 @@ async function harvestPearl(page, strokes, opened, outcome) {
     }
   }
 
+  const layeredIndex = outcome === 'Flawed' ? 9 : -1;
+  await page.evaluate((layeredIndex) => {
+    const key = 'aurelac.workbench.v1';
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.harvest.pearl.coating.forEach((patch, index) => { patch.undercoat = index === layeredIndex ? 0.38 : 0; });
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, layeredIndex);
+  await page.reload();
   await screenshot(page, `${outcome.toLowerCase()}-coated-pearl`);
   await selectTool(page, 'Wipe');
   await drag(page, pearlPoint(-24, 0), pearlPoint(24, 0));
   await expectStatus(page, 'still sticky');
   await selectTool(page, 'Fazer');
-  if (outcome === 'Pristine') await expectSplash(page, pearlPoint(-15, -16), 'fazer');
-  await drag(page, pearlPoint(-21, -18), pearlPoint(21, -18));
+  const topPatch = pearlPoint(-16, -17);
+  const tap = await boardPoint(page, topPatch);
+  await page.mouse.click(tap.x, tap.y);
+  assert.ok((await savedCoating(page)).every(({ treatment }) => treatment < 1));
+  if (outcome === 'Pristine') await expectSplash(page, topPatch, 'fazer');
+  await holdSpray(page, topPatch);
+  assert.equal((await savedCoating(page))[0].treatment, 1);
   await selectTool(page, 'Wipe');
   await drag(page, pearlPoint(-24, -16), pearlPoint(24, -16));
-  await expectStatus(page, 'lifting off');
+  assert.ok((await savedCoating(page))[0].amount < 1);
   await page.getByRole('button', { name: 'Work light' }).click();
   await expectStatus(page, 'coating still');
   await selectTool(page, 'Fazer');
-  for (const y of [0, 20]) await drag(page, pearlPoint(-21, y), pearlPoint(21, y));
+  for (const y of [-18, 0, 20]) await drag(page, pearlPoint(-22, y), pearlPoint(22, y), 60);
   await screenshot(page, `${outcome.toLowerCase()}-treated-pearl`);
   await selectTool(page, 'Wipe');
   for (let turn = 0; turn < 3; turn++) {
@@ -252,6 +277,17 @@ async function harvestPearl(page, strokes, opened, outcome) {
       await drag(page, pearlPoint(-24, y), pearlPoint(24, y), 6);
     }
     if (await page.getByRole('button', { name: 'Roll', exact: true }).isVisible()) break;
+  }
+  if (layeredIndex >= 0) {
+    const patch = (await savedCoating(page))[layeredIndex];
+    assert.equal(patch.amount, 0.38);
+    assert.equal(patch.treatment, 0);
+    await screenshot(page, 'flawed-amber-undercoat');
+    await selectTool(page, 'Fazer');
+    const { x, y } = COATING_PATCHES[layeredIndex];
+    await holdSpray(page, pearlPoint(x, y));
+    await selectTool(page, 'Wipe');
+    await drag(page, pearlPoint(-24, y), pearlPoint(26, y));
   }
   await expectStatus(page, 'The pearl is clean');
   await screenshot(page, `${outcome.toLowerCase()}-wiped-pearl`);

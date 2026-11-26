@@ -1,7 +1,8 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
 import {
-  beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean, storeHarvest,
+  COATING_PATCHES, beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture,
+  openBlisters, pearlIsClean, storeHarvest,
 } from './harvest.js';
 import { beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { COMMON_NODE, nodeCode, nodeFor } from './nodes.js';
@@ -82,9 +83,10 @@ const messages = {
   'blister-lifted': 'The blister is out. The pearl is showing through.',
   'pearl-revealed': 'The root pearl is exposed. Spray the coating with Fazer.',
   rupture: 'The blister ruptures. Poison gas dissolves the root pearl.',
-  fazer: 'Fazer turns the coating green. Wipe away the treated goop.',
+  fazer: 'Hold the spray on the amber goop until it turns green.',
   'coating-wiped': 'The treated coating is lifting off.',
   'coating-sticky': 'The amber coating is still sticky. Spray it with Fazer.',
+  'coating-undercoat': 'More amber goop showed through. Spray that patch again.',
   'pearl-clean': 'The pearl is clean. Inspect it under the light or put it in the case.',
   seated: 'The pearl sits flat in the padded recess.',
   rim: 'The pearl rocks on the rim. Re-seat it before closing.',
@@ -106,7 +108,7 @@ const toolHints = {
     stone: 'Draw the blade back and forth along the stone.',
   },
   pearl: {
-    fazer: 'Spray the amber coating until it turns green.',
+    fazer: 'Hold or sweep Fazer slowly over the amber coating until it turns green.',
     wipe: 'Rub the green coating to lift it off.',
     case: 'Lift the pearl into the padded recess.',
   },
@@ -133,8 +135,9 @@ function render(time) {
   const drying = dryMembrane(specimen, time);
   if (wasWet && !peelIsWet(specimen)) report(messages.dried);
   if (gesture?.pull && !gesture.finished) reportInteraction(continuePeel(specimen, gesture, time), time);
+  if (gesture?.sprayContact && moveHarvestGesture(harvest, gesture, gesture.last, time)) sprayFazer(time);
   const animating = renderer.draw(specimen, harvest, gesture, time, tool);
-  if (animating || gesture?.pull?.settling) requestRender();
+  if (animating || gesture?.pull?.settling || gesture?.sprayContact) requestRender();
   else if (drying) dryingTimer = setTimeout(requestRender, 65);
 }
 
@@ -192,7 +195,8 @@ function startNode(seed) {
   finishGesture();
   const node = nodeFor(seed);
   specimen = createSpecimen({ seed: node.seed });
-  harvest = createHarvest(node.seed);
+  const undercoatPatch = Math.random() < 1 / 3 ? Math.floor(Math.random() * COATING_PATCHES.length) : -1;
+  harvest = createHarvest(node.seed, undercoatPatch);
   runId = crypto.randomUUID();
   tool = 'blade';
   feedback.textContent = 'The specimen is intact.';
@@ -219,7 +223,7 @@ canvas.addEventListener('pointerdown', (event) => {
       ? beginSharpening(location)
       : harvest.stage === 'membrane'
         ? beginGesture(specimen, tool, location, event.timeStamp, blade)
-        : beginHarvestGesture(harvest, tool, location, blade);
+        : beginHarvestGesture(harvest, tool, location, blade, event.timeStamp);
     if (!next) {
       if (tool === 'grip' && !exposed(specimen) && specimen.cut.some(Boolean)) report(messages.grab);
       return;
@@ -252,7 +256,8 @@ canvas.addEventListener('pointermove', (event) => {
       : membrane
         ? moveGesture(specimen, gesture, location, sample.timeStamp)
         : moveHarvestGesture(harvest, gesture, location, sample.timeStamp);
-    if (event && (event !== 'swollen' || !result)) result = event;
+    if (event === 'coating-undercoat') result = event;
+    else if (event && result !== 'coating-undercoat' && (event !== 'swollen' || !result)) result = event;
   }
   if (gesture.tool === 'stone') {
     if (result) effects.play('stone');
@@ -310,6 +315,9 @@ function endPointer(event) {
   if (event.pointerId === primary) {
     if (event.type === 'pointerup') {
       effects.activate();
+      if (gesture.tool === 'fazer') {
+        moveHarvestGesture(harvest, gesture, toBoard(event, canvas.getBoundingClientRect()), event.timeStamp);
+      }
       const result = finishHarvestGesture(harvest, gesture);
       if (result) reportHarvestInteraction(result);
     }
