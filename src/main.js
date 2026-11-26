@@ -85,6 +85,14 @@ const toolHints = {
   stored: {},
 };
 
+const benchDescriptions = {
+  membrane: 'Overhead view of a tethered Aurelac node',
+  blisters: 'Exposed carrom blisters on the harvest bench',
+  pearl: 'Root pearl and padded storage case',
+  ruined: 'The remains of a dissolved root pearl',
+  stored: 'The appraisal view of the root pearl and its case',
+};
+
 function report(text) {
   if (feedback.textContent !== text) feedback.textContent = text;
   if (note.textContent !== text) note.textContent = text;
@@ -111,6 +119,7 @@ function updateTool() {
   const options = toolHints[harvest.stage];
   if (!Object.hasOwn(options, tool)) tool = Object.keys(options)[0];
   instrument.dataset.stage = harvest.stage;
+  canvas.setAttribute('aria-label', benchDescriptions[harvest.stage]);
   tray.hidden = Object.keys(options).length === 0;
   for (const button of tools) {
     button.hidden = !Object.hasOwn(options, button.dataset.tool);

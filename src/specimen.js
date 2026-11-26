@@ -3,7 +3,6 @@ import {
   between, clamp, closestSeam, distance, mix, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
 
-export const TOOLS = ['blade', 'diffuser', 'grip'];
 export const COMMON_NODE = { seed: 107, name: 'Common node', origin: 'Bakhroma Green' };
 
 export function createSpecimen({ seed = COMMON_NODE.seed } = {}) {
