@@ -430,7 +430,8 @@ try {
     tissuePoint(blister, -12), tissuePoint(blister, 12), tissuePoint(blister, -12),
   ], 'Poison gas dissolves');
   await screenshot(touch, 'touch-ruined');
-  await touch.getByRole('button', { name: 'Record loss' }).click();
+  await touch.getByRole('button', { name: 'Record loss' }).tap();
+  await touch.locator('#appraisal').waitFor({ timeout: 1600 });
   assert.equal(await touch.locator('#appraisal-outcome').textContent(), 'Ruined');
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);

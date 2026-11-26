@@ -343,15 +343,17 @@ function selectTool(next) {
     : toolHints[harvest.stage][tool];
 }
 
-for (const button of tools) {
-  button.addEventListener('click', () => selectTool(button.dataset.tool));
+function onBenchPress(button, press) {
+  button.addEventListener('click', press);
   button.addEventListener('pointerup', (event) => {
     // Chromium can suppress the synthetic click when a tap follows a quick swipe.
-    if (event.pointerType !== 'touch') return;
+    if (event.pointerType !== 'touch' || !event.isPrimary || button.disabled) return;
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (button.contains(target)) selectTool(button.dataset.tool);
+    if (button.contains(target)) press();
   });
 }
+
+for (const button of tools) onBenchPress(button, () => selectTool(button.dataset.tool));
 
 nodeSelect.addEventListener('change', () => startNode(Number(nodeSelect.value)));
 document.querySelector('#reset').addEventListener('click', () => startNode(specimen.seed));
@@ -375,7 +377,7 @@ function showAppraisal(appraisal) {
   updateTool();
 }
 
-closeButton.addEventListener('click', () => {
+onBenchPress(closeButton, () => {
   finishGesture();
   const appraisal = storeHarvest(harvest);
   if (!appraisal) return;
