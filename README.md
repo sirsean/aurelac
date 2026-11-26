@@ -1,6 +1,6 @@
 # Aurelac
 
-A portrait harvesting game set on Bakhroma Green. Prospectors extract **root pearls** from beneath a tethered husk, a pink membrane, and orange carrom blisters. The complete-harvest preview plays through one common node, BG–107, from the first incision to case appraisal.
+A portrait harvesting game set on Bakhroma Green. Prospectors extract **root pearls** from beneath a tethered husk, a pink membrane, and orange carrom blisters. A harvest runs from the first incision to the case appraisal.
 
 ## Run the bench
 
@@ -21,6 +21,7 @@ While the dev or preview server is running, use `npm run test:browser` to exerci
 - Cut, wetness, peel, and tear are derived from input positions. Specimen data is independent of browser state and rendering. [specimen.js](src/specimen.js)
 - Blister timing, fold geometry, coating, placement, and appraisal live in the harvest model. Its renderer uses the same folds and coating patches and rotates local damage with the clean pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js)
 - The renderer clips deeper tissue to the opening and animates recoil. Append `?debug=1` to see opening width, hit regions, and pull load. [render.js](src/render.js)
+- Curated specimen geometry, intrinsic pearl properties, and blister timing live in node profiles. Blade wear is shared across harvests. The save module restores the active bench and appends one collection record per successful run. [nodes.js](src/nodes.js) · [blade.js](src/blade.js) · [save.js](src/save.js)
 - The browser controller handles tool selection, pointer capture, cancellation, resizing, and the field guide. It maps CSS pixels to the tray, even when a finger moves past the canvas. [main.js](src/main.js)
 
 The source pages define the milestone gates, the inked specimen art, and the in-world terminology and order of operations. [Gameplay specification](https://chatgpt.com/space/page_6c29719eb03c81918cc830afdc78cc83) · [Art direction](https://chatgpt.com/space/page_963f32e48dd08191b1b68d933026e251) · [Prospecting guide](https://chatgpt.com/space/page_4b477d5814148191b38d358d447f4819)
@@ -32,6 +33,7 @@ Authenticate Wrangler with access to Workers and Custom Domains on `sirsean.me`.
 - `main` uses `aurelac.sirsean.me`.
 - `peel-prototype` uses `peel-prototype.aurelac.sirsean.me`.
 - `complete-harvest` uses `complete-harvest.aurelac.sirsean.me`.
+- `specimens-and-collection` uses `specimens-and-collection.aurelac.sirsean.me`.
 - Other branches use the same preview scheme. Names that need normalization get a stable hash suffix so similarly named branches deploy independently.
 
 Cloudflare manages DNS and certificates for these exact Worker Custom Domains. Deployments are explicit.
@@ -58,6 +60,10 @@ Fazer sprays the sticky amber coating and turns treated patches green. Wipe lift
 
 Chromium 156 completed pristine, flawed, and ruined harvests on BG–107. Checks covered the five angled cuts, dragging a blister clear, spraying and wiping the pearl in stages, and the closed-start peel with mouse and emulated touch.
 
-## Next milestones
+## Specimens and repeat harvests
 
-Introduce three curated specimens with independent size, intrinsic clarity, blister placement, and slack windows. Check whether players can read the rare specimen's shorter settled window on a phone. Then add blade wear, sharpening, and a versioned local collection that preserves damage across reloads and records each stored pearl once. Tune replay and input feedback with fresh and practiced players.
+Select the broad, small, or rare node at the top of the tray. Shape, pearl size, intrinsic amber and clarity, and blister placement vary by node. The rare node has a shorter settled window and a subtler fold. The starting properties determine pearl size and amber depth. Handling and damage affect the clarity appraisal.
+
+The Blade gradually dulls through repeated cuts. When the husk starts to bunch, select Stone and draw the blade back and forth on it. Reloading the bench preserves the incision, damage, harvest stage, and blade condition. The membrane continues drying while the bench is closed. Collection lists stored pearls in the current browser, including their source node and appraisal. Ruined pearls appear in the loss appraisal.
+
+On a fresh phone browser, ask first-time and practiced players to try the broad node and then the rare node. Listen for what tells them a fold is ready and whether they recognize a missed cut. After repeat harvests, observe whether they notice blade drag and choose Stone, and whether they can connect any appraisal flaw to the handling that caused it. Compare one-handed and two-finger runs. Physical-phone and fresh-player observations are pending.

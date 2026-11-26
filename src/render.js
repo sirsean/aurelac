@@ -4,6 +4,7 @@ import {
 import { createLiquidSplash } from './liquid-splash.js';
 import { drawBlisters, drawLiftedBlisters, drawPearlBench } from './harvest-render.js';
 import { nodeFor } from './nodes.js';
+import { STONE } from './blade.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
 
 const shell = new Path2D(
@@ -535,7 +536,44 @@ function drawContact(ctx, gesture) {
   depression.addColorStop(1, '#00000000');
   ctx.fillStyle = depression;
   ctx.fillRect(x - 21, y - 21, 42, 42);
+  if (gesture.bunch) {
+    for (let index = 0; index < 3; index++) {
+      const bend = new Path2D();
+      bend.moveTo(x + index * 5 - 5, y - 14);
+      bend.quadraticCurveTo(x + index * 5 - 13, y, x + index * 5 - 6, y + 12);
+      line(ctx, bend, '#674a41', 1.2 + gesture.bunch);
+    }
+  }
   ctx.restore();
+}
+
+function drawStone(ctx, gesture) {
+  const { left, right, top, bottom } = STONE;
+  const stone = new Path2D();
+  stone.roundRect(left, top, right - left, bottom - top, 9);
+  ctx.save();
+  ctx.translate(2, 5);
+  fill(ctx, stone, '#252c2270');
+  ctx.restore();
+  const face = ctx.createLinearGradient(0, top, 0, bottom);
+  face.addColorStop(0, '#a6a79a');
+  face.addColorStop(0.46, '#818677');
+  face.addColorStop(1, '#616653');
+  fill(ctx, stone, face);
+  line(ctx, stone, '#484d40', 2);
+  const travel = new Path2D();
+  travel.moveTo(left + 22, (top + bottom) / 2);
+  travel.lineTo(right - 22, (top + bottom) / 2);
+  line(ctx, travel, '#c3c3a98a', 1);
+  if (gesture?.tool !== 'stone') return;
+  const { x, y } = gesture.contact;
+  const blade = new Path2D();
+  blade.moveTo(x - 19, y + 4);
+  blade.lineTo(x + 17, y - 7);
+  blade.lineTo(x + 12, y + 1);
+  blade.closePath();
+  fill(ctx, blade, '#e4dfc9');
+  line(ctx, blade, '#46463d', 1.4);
 }
 
 function drawDebug(ctx, specimen, pose) {
@@ -572,7 +610,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   let release = null;
   let previousTime = null;
 
-  function draw(specimen, harvest, gesture, time) {
+  function draw(specimen, harvest, gesture, time, tool) {
     if (seed !== specimen.seed) {
       seed = specimen.seed;
       body = createShellLayer(seed);
@@ -624,6 +662,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     if (!workingBlisters) drawContact(ctx, gesture);
     ctx.restore();
     if (workingBlisters) drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion);
+    if (tool === 'stone') drawStone(ctx, gesture);
     if (release) {
       release.start ??= time;
       const progress = clamp((time - release.start) / 240);

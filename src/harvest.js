@@ -1,5 +1,6 @@
 import { SEAM, between, clamp, closestSeam, distance, offset, openingAt, openingHalfWidth, point } from './geometry.js';
 import { COMMON_NODE, nodeFor } from './nodes.js';
+import { wearBlade } from './blade.js';
 
 export const PEARL_CENTER = point(144, 182);
 export const CASE_CENTER = point(291, 215);
@@ -143,12 +144,12 @@ export function pearlIsClean(harvest) {
   return harvest.pearl.coating.every(({ amount }) => amount === 0);
 }
 
-export function beginHarvestGesture(harvest, tool, location) {
+export function beginHarvestGesture(harvest, tool, location, blade) {
   if (harvest.stage === 'blisters') {
     if (tool !== 'blade' && tool !== 'grip') return null;
     const blister = findBlister(harvest, location, tool);
     if (!blister) return null;
-    return { tool, blister, start: location, last: location, finished: false };
+    return { tool, blister, start: location, last: location, finished: false, blade };
   }
   if (harvest.stage !== 'pearl' || distance(location, harvest.pearl.position) > Math.max(34, 38 * harvest.pearl.scale)) return null;
   if (tool === 'fazer') {
@@ -161,7 +162,7 @@ export function beginHarvestGesture(harvest, tool, location) {
   return null;
 }
 
-function cutBlister(harvest, blister, location, travel, time) {
+function cutBlister(harvest, { blister, blade }, location, travel, time) {
   if (readyToLift(blister)) return null;
   const { center } = blister;
   const progress = foldProgress(blister, location);
@@ -172,10 +173,12 @@ function cutBlister(harvest, blister, location, travel, time) {
     const index = Math.min(blister.cut.length - 1, Math.floor(progress * blister.cut.length));
     const newCut = !blister.cut[index];
     blister.cut[index] = true;
+    if (newCut) wearBlade(blade, foldLength / blister.cut.length);
     if (readyToLift(blister)) return 'blister-cut';
     return newCut ? 'cut-part' : null;
   }
   if (!intoTissue && !onFold) return null;
+  wearBlade(blade, travel);
 
   const injury = blister.acid;
   blister.acid += travel * (intoTissue ? 1 : 0.68);
@@ -208,7 +211,7 @@ export function moveHarvestGesture(harvest, gesture, location, time) {
     const samples = Math.ceil(travel / 2.2);
     let result = null;
     for (let index = 1; index <= samples; index++) {
-      const event = cutBlister(harvest, blister, between(gesture.last, location, index / samples), travel / samples, time);
+      const event = cutBlister(harvest, gesture, between(gesture.last, location, index / samples), travel / samples, time);
       if (event && (event !== 'swollen' || !result)) result = event;
       if (event === 'rupture') {
         gesture.finished = true;

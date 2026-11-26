@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { ATTACHMENTS, BOARD, TUNING, seamPoint } from '../src/geometry.js';
+import { ATTACHMENTS, BOARD, SEAM, TUNING, offset, seamPoint } from '../src/geometry.js';
+import { STONE } from '../src/blade.js';
 import { CASE_CENTER, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
 import { COMMON_NODE, NODES, nodeCode } from '../src/nodes.js';
 import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
@@ -141,6 +142,12 @@ async function expectIntact(page) {
   assert.equal(await page.getByRole('button', { name: 'Blade' }).getAttribute('aria-pressed'), 'true');
   await expectStatus(page, 'specimen is intact');
   await expectCleanLobe(page);
+}
+
+async function expectCollection(page, count) {
+  await page.getByRole('button', { name: 'Collection', exact: true }).click();
+  assert.equal(await page.locator('#collection-list li').count(), count);
+  await page.locator('#collection').getByRole('button', { name: 'Close' }).click();
 }
 
 const finishedSection = (index) => index + TUNING.attachmentsPerSection === ATTACHMENTS.length
@@ -304,6 +311,9 @@ try {
   await screenshot(page, 'desktop-clean-peel');
   await harvestPearl(page, [[0.34, 0.68], [0.63, 0.91]], desktopOpening, 'Pristine');
   await screenshot(page, 'desktop-pristine');
+  await page.reload();
+  assert.equal(await page.locator('#appraisal-outcome').textContent(), 'Pristine');
+  await expectCollection(page, 1);
 
   await page.setViewportSize({ width: 320, height: 640 });
   await page.getByRole('button', { name: 'Reset node' }).click();
@@ -322,6 +332,8 @@ try {
   await expectStatus(page, 'dry section tears');
   await page.mouse.up();
   await screenshot(page, 'narrow-dry-tear');
+  await page.reload();
+  await expectStatus(page, 'Harvest resumed');
 
   const middle = TUNING.attachmentsPerSection;
   await selectTool(page, 'Diffuser');
@@ -343,6 +355,8 @@ try {
   await screenshot(page, 'narrow-recovered-peel');
   await harvestPearl(page, [[0.2, 0.84]], narrowOpening, 'Flawed');
   await screenshot(page, 'narrow-flawed');
+  await page.reload();
+  await expectCollection(page, 2);
   assert.deepEqual(desktopErrors, []);
 
   const touch = await browser.newPage({
@@ -431,7 +445,39 @@ try {
   }
   assert.equal(new Set(canvases).size, NODES.length);
   assert.deepEqual(touchErrors, []);
-  console.log(`Passed angled cuts, blister drags, Fazer splash and wipe, and pristine, flawed, and ruined outcomes in Chromium ${browser.version()}.`);
+
+  const savedBench = await browser.newPage({ viewport: { width: 380, height: 780 } });
+  const saveErrors = await setUp(savedBench);
+  await trace(savedBench, 0.31, 0.69);
+  await trace(savedBench, 0.43, 0.54, (t) => offset(SEAM[Math.round(t * TUNING.seamSegments)], 17));
+  const key = 'aurelac.workbench.v1';
+  const before = await savedBench.evaluate((key) => {
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.blade.wear = 0.96;
+    localStorage.setItem(key, JSON.stringify(saved));
+    return saved;
+  }, key);
+  assert.ok(before.specimen.nicks.length);
+  await savedBench.reload();
+  await expectStatus(savedBench, 'Harvest resumed');
+  assert.ok(Number(await savedBench.locator('#blade-flat').getAttribute('opacity')) > 0.7);
+  await drag(savedBench, seamPoint(0.69), seamPoint(0.74), 4);
+  await expectStatus(savedBench, 'bunches under the blade');
+  await selectTool(savedBench, 'Stone');
+  const y = (STONE.top + STONE.bottom) / 2;
+  await drag(savedBench, { x: 105, y }, { x: 263, y });
+  await drag(savedBench, { x: 263, y }, { x: 105, y });
+  await drag(savedBench, { x: 105, y }, { x: 263, y });
+  await expectStatus(savedBench, 'draws cleanly again');
+  const after = await savedBench.evaluate((key) => JSON.parse(localStorage.getItem(key)), key);
+  assert.equal(after.blade.wear, 0);
+  assert.deepEqual(after.specimen.nicks, before.specimen.nicks);
+  assert.deepEqual(after.specimen.cut, before.specimen.cut);
+  await selectTool(savedBench, 'Blade');
+  await trace(savedBench, 0.63, 0.92);
+  await expectStatus(savedBench, 'Pink tissue is exposed');
+  assert.deepEqual(saveErrors, []);
+  console.log(`Passed three silhouettes, pristine, flawed and ruined harvests, and reload, collection and sharpening checks in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }

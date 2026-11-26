@@ -3,6 +3,7 @@ import {
   between, clamp, closestSeam, distance, mix, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
 import { COMMON_NODE } from './nodes.js';
+import { bladeDrag, wearBlade } from './blade.js';
 
 export function createSpecimen({ seed = COMMON_NODE.seed } = {}) {
   return {
@@ -59,12 +60,13 @@ export function peelIsWet(specimen) {
     .every(({ wetness }) => wetness >= TUNING.minimumWetness);
 }
 
-export function beginGesture(specimen, tool, location, time = 0) {
+export function beginGesture(specimen, tool, location, time = 0, blade) {
   if (exposed(specimen)) return null;
   dryMembrane(specimen, time);
   if (tool === 'grip' && !canGrip(specimen, location)) return null;
   const diffusing = tool === 'diffuser' && diffuserContact(specimen, location, TUNING.diffuserFirstContact);
   const front = tool === 'grip' ? peelFront(specimen) : -1;
+  const drag = tool === 'blade' ? bladeDrag(blade) : 0;
   return {
     tool,
     start: location,
@@ -74,7 +76,8 @@ export function beginGesture(specimen, tool, location, time = 0) {
     wetContact: diffusing ? location : null,
     handle: peelHandle(specimen, front),
     direction: ATTACHMENTS[front]?.direction,
-    travelUntilContact: tool === 'blade' ? TUNING.bladeTravel : TUNING.contactStep,
+    travelUntilContact: tool === 'blade' ? TUNING.bladeTravel + drag * 21 : TUNING.contactStep,
+    blade, drag, bunch: 0,
     pinned: false,
     recovery: 0,
     peelTravel: 0,
@@ -224,11 +227,14 @@ export function moveGesture(specimen, gesture, location, time = 0) {
   const travel = distance(start, location);
   if (travel === 0) return null;
   let nextContact = gesture.travelUntilContact;
+  gesture.bunch = gesture.tool === 'blade' && gesture.drag > 0 && nextContact > travel
+    && closestSeam(location).gap < TUNING.bladeRadius ? gesture.drag : 0;
   let event = null;
   while (nextContact <= travel) {
     const sample = between(start, location, nextContact / travel);
     if (gesture.tool === 'blade') {
       const feedback = bladeContact(specimen, sample);
+      if (feedback) wearBlade(gesture.blade, TUNING.contactStep);
       if (feedback === 'nick' || !event) event = feedback;
     } else {
       gesture.diffusing = diffuserContact(specimen, sample, TUNING.contactStep);
@@ -241,5 +247,5 @@ export function moveGesture(specimen, gesture, location, time = 0) {
   }
   gesture.travelUntilContact = nextContact - travel;
   gesture.last = location;
-  return event;
+  return event ?? (gesture.bunch > 0.06 ? 'blade-drag' : null);
 }

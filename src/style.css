@@ -33,6 +33,7 @@ button:disabled { opacity: .55; cursor: default; }
   align-items: center;
   justify-content: space-between;
 }
+.masthead-actions { display: flex; justify-content: flex-end; }
 .wordmark {
   display: flex;
   align-items: center;
@@ -145,7 +146,7 @@ h2 { font-size: 2rem; }
   padding: 10px;
   border-top: 1px solid #4c5241;
 }
-.instrument[data-stage="blisters"] .tool-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.instrument[data-stage="membrane"] .tool-tray { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .instrument [hidden], .appraisal[hidden], .bench-foot[hidden] { display: none; }
 .tool {
   min-width: 0;
@@ -205,6 +206,10 @@ h2 { font-size: 2rem; }
 }
 .appraisal dt { font-size: .875rem; color: var(--muted); }
 .appraisal dd { margin: 3px 0 0; font-weight: 680; }
+#next-node { margin-top: 14px; }
+#collection-list { list-style: none; margin: 0; padding: 0; }
+#collection-list li { padding: 12px 0; border-top: 1px solid #c0b69d; }
+#collection-list li p { margin: 5px 0 0; color: var(--muted); }
 
 dialog {
   margin: auto;
@@ -243,6 +248,8 @@ dialog dd { margin: 2px 0 13px; }
   .bench-foot { align-items: flex-start; flex-wrap: wrap; gap: 4px 10px; }
 }
 @media (max-width: 360px) {
+  .masthead-inner { flex-wrap: wrap; }
+  .masthead-actions .guide-button { padding-inline: 6px; }
   .tool { flex-direction: column; gap: 2px; min-height: 55px; }
   .tool svg { width: 22px; height: 22px; }
 }
