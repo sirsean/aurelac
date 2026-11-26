@@ -1,7 +1,7 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
 import {
-  beginHarvestGesture, createHarvest, moveHarvestGesture, openBlisters, placePearl, storeHarvest, wetCoverage,
+  beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean, storeHarvest,
 } from './harvest.js';
 import { beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { createRenderer } from './render.js';
@@ -54,13 +54,16 @@ const messages = {
   swollen: 'The blister is swollen. Wait for the pale fold to return.',
   'cut-part': 'The cut holds. Continue when the blister settles.',
   'acid-nick': 'Acid leaked from a nick in the blister.',
-  'blister-cut': 'The fold is free. Grip the blister and lift it out.',
+  'blister-cut': 'The fold is free. Grip the blister and drag it past the lip.',
   'blister-attached': 'The fold still holds the blister.',
-  'blister-lifted': 'The blister is free. Cut the next exposed fold.',
-  'pearl-revealed': 'The root pearl is exposed. Apply fazer, then roll it.',
+  'blister-in-husk': 'Drag the cut blister clear of the opening.',
+  'blister-lifted': 'The blister is out. The pearl is showing through.',
+  'pearl-revealed': 'The root pearl is exposed. Spray the coating with Fazer.',
   rupture: 'The blister ruptures. Poison gas dissolves the root pearl.',
-  fazer: 'The drop clings to the pearl. Grip and roll it to spread the fazer.',
-  coated: 'The fazer has spread across the surface.',
+  fazer: 'Fazer turns the coating green. Wipe away the treated goop.',
+  'coating-wiped': 'The treated coating is lifting off.',
+  'coating-sticky': 'The amber coating is still sticky. Spray it with Fazer.',
+  'pearl-clean': 'The pearl is clean. Inspect it under the light or put it in the case.',
   seated: 'The pearl sits flat in the padded recess.',
   rim: 'The pearl rocks on the rim. Re-seat it before closing.',
   tray: 'Place the pearl in the padded recess.',
@@ -74,11 +77,11 @@ const toolHints = {
   },
   blisters: {
     blade: 'Cut a pale fold when the blister settles.',
-    grip: 'Lift a blister after cutting through its fold.',
+    grip: 'Drag each cut blister clear of the opening.',
   },
   pearl: {
-    fazer: 'Apply a drop to the root pearl.',
-    grip: 'Roll the pearl to inspect or spread the fazer.',
+    fazer: 'Spray the amber coating until it turns green.',
+    wipe: 'Rub the green coating to lift it off.',
     case: 'Lift the pearl into the padded recess.',
   },
   ruined: {},
@@ -124,6 +127,7 @@ function updateTool() {
   for (const button of tools) {
     button.hidden = !Object.hasOwn(options, button.dataset.tool);
     button.setAttribute('aria-pressed', String(button.dataset.tool === tool));
+    if (button.dataset.tool === 'wipe') button.textContent = pearlIsClean(harvest) ? 'Roll' : 'Wipe';
   }
   pearlActions.hidden = harvest.stage !== 'pearl' && harvest.stage !== 'ruined';
   lightButton.hidden = harvest.stage !== 'pearl';
@@ -178,7 +182,7 @@ canvas.addEventListener('pointerdown', (event) => {
     gesture = next;
     primary = event.pointerId;
     if (next.diffusing) reportInteraction('wet', event.timeStamp);
-    if (next.placedDrop) report(messages.fazer);
+    if (next.sprayContact) sprayFazer(event.timeStamp);
   } else if (harvest.stage === 'membrane' && gesture?.tool === 'grip' && anchor === null
       && distance(location, point(197, 207)) <= TUNING.pinRadius) {
     anchor = event.pointerId;
@@ -195,7 +199,6 @@ canvas.addEventListener('pointermove', (event) => {
   const rect = canvas.getBoundingClientRect();
   const samples = event.getCoalescedEvents?.();
   const membrane = harvest.stage === 'membrane';
-  const before = harvest.stage === 'pearl' ? wetCoverage(harvest) : null;
   let result = null;
   for (const sample of samples?.length ? samples : [event]) {
     const location = toBoard(sample, rect);
@@ -206,14 +209,19 @@ canvas.addEventListener('pointermove', (event) => {
   }
   if (membrane) {
     reportInteraction(result, event.timeStamp);
+  } else if (result === 'fazer') {
+    sprayFazer(event.timeStamp);
   } else if (result) {
     report(messages[result]);
     updateTool();
-  } else if (before !== null && before < 1 && wetCoverage(harvest) === 1) {
-    report(messages.coated);
   }
   requestRender();
 });
+
+function sprayFazer(time) {
+  renderer.splash(gesture.sprayContact, time, 'fazer');
+  report(messages.fazer);
+}
 
 function reportInteraction(result, time) {
   const pull = gesture.pull;
@@ -241,9 +249,9 @@ function reportInteraction(result, time) {
 function endPointer(event) {
   if (event.pointerId === primary) {
     if (event.type === 'pointerup') {
-      const placement = placePearl(harvest, gesture);
-      if (placement) {
-        report(messages[placement]);
+      const result = finishHarvestGesture(harvest, gesture);
+      if (result) {
+        report(messages[result]);
         updateTool();
       }
     }
@@ -271,7 +279,9 @@ function selectTool(next) {
   finishGesture();
   tool = next;
   updateTool();
-  note.textContent = toolHints[harvest.stage][tool];
+  note.textContent = tool === 'wipe' && pearlIsClean(harvest)
+    ? 'Roll the clean pearl under the work light.'
+    : toolHints[harvest.stage][tool];
 }
 
 for (const button of tools) {
@@ -287,8 +297,8 @@ for (const button of tools) {
 document.querySelector('#reset').addEventListener('click', reset);
 lightButton.addEventListener('click', () => {
   harvest.light = !harvest.light;
-  if (harvest.light && wetCoverage(harvest) < 1) {
-    report('The work light catches a hazy patch. Apply fazer and roll the pearl again.');
+  if (harvest.light && !pearlIsClean(harvest)) {
+    report('The work light shows coating still on the pearl.');
   }
   updateTool();
   requestRender();

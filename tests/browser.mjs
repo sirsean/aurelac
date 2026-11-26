@@ -49,25 +49,26 @@ function pinkSurface(t) {
   return { x: x - 7, y: y + 20 };
 }
 
-async function expectSplash(page) {
-  const contact = await boardPoint(page, pinkSurface(0.5));
+async function expectSplash(page, location = pinkSurface(0.5), name = 'diffuser') {
+  const contact = await boardPoint(page, location);
   await page.mouse.move(contact.x, contact.y);
   await page.mouse.down();
   try {
-    const changed = await page.evaluate(async () => {
+    const changed = await page.evaluate(async ({ location, board }) => {
       const canvas = document.querySelector('#specimen');
       const ctx = canvas.getContext('2d');
       const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-      const capture = () => ctx.getImageData(canvas.width * 0.38, canvas.height * 0.42,
-        canvas.width * 0.3, canvas.height * 0.24).data;
+      const capture = () => ctx.getImageData(canvas.width * (location.x - 36) / board.width,
+        canvas.height * (location.y - 36) / board.height, canvas.width * 72 / board.width,
+        canvas.height * 72 / board.height).data;
       await frame();
       const first = capture();
       await frame();
       await frame();
       return capture().some((value, index) => value !== first[index]);
-    });
-    assert.ok(changed, 'the diffuser should animate while held still on the membrane');
-    await screenshot(page, 'desktop-diffuser-splash');
+    }, { location, board: BOARD });
+    assert.ok(changed, `${name} should splash while held still`);
+    await screenshot(page, `desktop-${name}-splash`);
   } finally {
     await page.mouse.up();
   }
@@ -155,7 +156,7 @@ function blistersFor(strokes) {
   }
   const harvest = createHarvest();
   openBlisters(harvest, specimen, 0);
-  return harvest.blisters;
+  return harvest;
 }
 
 async function drag(page, start, end, steps = 9) {
@@ -173,13 +174,21 @@ async function settled(page, opened, index) {
   { opened, index, ...BLISTER_TIMING }, { timeout: BLISTER_TIMING.cycle + 1300 });
 }
 
+function tissuePoint(blister, travel) {
+  const { center, axis } = blister;
+  return { x: center.x + axis.x * travel, y: center.y + axis.y * travel };
+}
+
+function pearlPoint(x, y) {
+  return { x: PEARL_CENTER.x + x, y: PEARL_CENTER.y + y };
+}
+
 async function harvestPearl(page, strokes, opened, outcome) {
-  const blisters = blistersFor(strokes);
+  const { blisters, pocket } = blistersFor(strokes);
   for (const blister of blisters) {
     await selectTool(page, 'Blade');
     if (outcome === 'Flawed' && blister.index === 1) {
-      const { x, y } = blister.center;
-      await drag(page, { x, y: y - 14 }, { x, y: y + 5 });
+      await drag(page, tissuePoint(blister, -12), tissuePoint(blister, 5));
       await expectStatus(page, 'Acid leaked');
     }
     await settled(page, opened, blister.index);
@@ -191,24 +200,53 @@ async function harvestPearl(page, strokes, opened, outcome) {
     await drag(page, blisterFold(blister, 0), blisterFold(blister, 1));
     await expectStatus(page, 'The fold is free');
     await selectTool(page, 'Grip');
-    await drag(page, blister.center, { x: blister.center.x, y: blister.center.y - 36 });
-    await expectStatus(page, blister.index === 2 ? 'The root pearl is exposed' : 'The blister is free');
+    const outside = { x: blister.center.x, y: blister.center.y < pocket.y ? 67 : 309 };
+    if (blister.index === 0) {
+      const center = await boardPoint(page, blister.center);
+      await page.mouse.click(center.x, center.y);
+      await expectStatus(page, 'The fold is free');
+      await drag(page, blister.center, { x: blister.center.x + 7, y: blister.center.y + 14 });
+      await expectStatus(page, 'clear of the opening');
+
+      const drop = await boardPoint(page, outside);
+      await page.mouse.move(center.x, center.y);
+      await page.mouse.down();
+      await page.mouse.move(drop.x, drop.y, { steps: 12 });
+      await expectStatus(page, 'clear of the opening');
+      await screenshot(page, `${outcome.toLowerCase()}-blister-drag`);
+      await page.mouse.up();
+      await expectStatus(page, 'The pearl is showing through');
+      await screenshot(page, `${outcome.toLowerCase()}-pearl-in-husk`);
+    } else {
+      await drag(page, blister.center, outside);
+      await expectStatus(page, blister === blisters.at(-1) ? 'The root pearl is exposed' : 'The blister is out');
+    }
   }
 
+  await screenshot(page, `${outcome.toLowerCase()}-coated-pearl`);
+  await selectTool(page, 'Wipe');
+  await drag(page, pearlPoint(-24, 0), pearlPoint(24, 0));
+  await expectStatus(page, 'still sticky');
   await selectTool(page, 'Fazer');
-  const center = await boardPoint(page, PEARL_CENTER);
-  await page.mouse.click(center.x, center.y);
-  await selectTool(page, 'Grip');
-  await drag(page, PEARL_CENTER, { x: PEARL_CENTER.x + 43, y: PEARL_CENTER.y });
+  if (outcome === 'Pristine') await expectSplash(page, pearlPoint(-15, -16), 'fazer');
+  await drag(page, pearlPoint(-21, -18), pearlPoint(21, -18));
+  await selectTool(page, 'Wipe');
+  await drag(page, pearlPoint(-24, -16), pearlPoint(24, -16));
+  await expectStatus(page, 'lifting off');
   await page.getByRole('button', { name: 'Work light' }).click();
-  await expectStatus(page, 'hazy patch');
+  await expectStatus(page, 'coating still');
   await selectTool(page, 'Fazer');
-  await page.mouse.click(center.x, center.y);
-  await selectTool(page, 'Grip');
+  for (const y of [0, 20]) await drag(page, pearlPoint(-21, y), pearlPoint(21, y));
+  await screenshot(page, `${outcome.toLowerCase()}-treated-pearl`);
+  await selectTool(page, 'Wipe');
   for (let turn = 0; turn < 3; turn++) {
-    await drag(page, PEARL_CENTER, { x: PEARL_CENTER.x + 77, y: PEARL_CENTER.y });
+    for (const y of [-21, -9, 5, 18, 24]) {
+      await drag(page, pearlPoint(-24, y), pearlPoint(24, y), 6);
+    }
+    if (await page.getByRole('button', { name: 'Roll', exact: true }).isVisible()) break;
   }
-  await expectStatus(page, 'spread across the surface');
+  await expectStatus(page, 'The pearl is clean');
+  await screenshot(page, `${outcome.toLowerCase()}-wiped-pearl`);
   await selectTool(page, 'Case');
   await drag(page, PEARL_CENTER, CASE_CENTER);
   await expectStatus(page, 'sits flat');
@@ -362,14 +400,19 @@ try {
     await selectTool(touch, 'Grip', 'touch');
     await swipe([handle(index), target(24, index), target(53, index)], finishedSection(index));
   }
+  const touchOpening = await touch.evaluate(() => performance.now());
   await expectCleanLobe(touch);
   await screenshot(touch, 'touch-clean-peel');
-  const { center } = blistersFor([[0.34, 0.68], [0.63, 0.91]])[1];
+  const [firstBlister, blister] = blistersFor([[0.34, 0.68], [0.63, 0.91]]).blisters;
+  await selectTool(touch, 'Blade', 'touch');
+  await settled(touch, touchOpening, firstBlister.index);
+  await swipe([0, 0.22, 0.48, 0.74, 1].map((value) => blisterFold(firstBlister, value)), 'The fold is free');
+  await selectTool(touch, 'Grip', 'touch');
+  await swipe([firstBlister.center, { x: firstBlister.center.x, y: 117 }, { x: firstBlister.center.x, y: 65 }]);
+  await expectStatus(touch, 'The pearl is showing through');
   await selectTool(touch, 'Blade', 'touch');
   await swipe([
-    { x: center.x, y: center.y - 13 },
-    { x: center.x, y: center.y + 13 },
-    { x: center.x, y: center.y - 13 },
+    tissuePoint(blister, -12), tissuePoint(blister, 12), tissuePoint(blister, -12),
   ], 'Poison gas dissolves');
   await screenshot(touch, 'touch-ruined');
   await touch.getByRole('button', { name: 'Record loss' }).click();
@@ -377,7 +420,7 @@ try {
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);
   assert.deepEqual(touchErrors, []);
-  console.log(`Passed peel regressions and pristine, flawed, and ruined harvests in Chromium ${browser.version()}.`);
+  console.log(`Passed angled cuts, blister drags, Fazer splash and wipe, and pristine, flawed, and ruined outcomes in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }

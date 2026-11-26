@@ -19,7 +19,7 @@ While the dev or preview server is running, use `npm run test:browser` to exerci
 
 - The incision lips and tools use the same tray coordinates, seam samples, ordered attachments, and tuning. [geometry.js](src/geometry.js)
 - Cut, wetness, peel, and tear are derived from input positions. Specimen data is independent of browser state and rendering. [specimen.js](src/specimen.js)
-- Blister timing, cuts, Fazer coverage, placement, and appraisal live in the harvest model. Its renderer shows the same fold geometry and rotates local damage with the pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js)
+- Blister timing, fold geometry, coating, placement, and appraisal live in the harvest model. Its renderer uses the same folds and coating patches and rotates local damage with the clean pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js)
 - The renderer clips deeper tissue to the opening and animates recoil. Append `?debug=1` to see opening width, hit regions, and pull load. [render.js](src/render.js)
 - The browser controller handles tool selection, pointer capture, cancellation, resizing, and the field guide. It maps CSS pixels to the tray, even when a finger moves past the canvas. [main.js](src/main.js)
 
@@ -52,9 +52,11 @@ Model tests cover the closed start, one section per grip, timed drying and refre
 
 ## Complete harvest
 
-Cut each blister along its pale fold during the settled window, then lift it with Grip. Pausing a cut preserves the opening. Acid from a nick leaves a local haze that rotates with the pearl. A rupture releases poison gas and melts the pearl. Fazer spreads as the player rolls the pearl, and the work light reveals patches where the solution has not reached. Closing the case produces a size, amber depth, and clarity appraisal. Closing on the rim can chip the pearl.
+Five carrom blisters surround the root pearl. Cut each pale fold at its own angle during the settled window. Pausing preserves the cut. A cut blister follows Grip and stays out when released clear of the opening. Each removal exposes more of the pearl inside the husk.
 
-Chromium 156 completed pristine, flawed, and ruined harvests on BG–107 with desktop mouse and emulated touch. The checks resumed a paused cut, treated a hazy patch before storage, and verified that blade, diffuser, and Grip still complete the closed-start peel.
+Fazer sprays the sticky amber coating and turns treated patches green. Wipe lifts the treated patches under the stroke and leaves untreated patches in place. Once clean, the pearl can be rolled under the work light so a nick's local acid haze rotates into view. A rupture releases poison gas and melts the pearl. The case appraisal records size, amber depth, and clarity. Residual coating and closing on the rim can lower the appraisal.
+
+Chromium 156 completed pristine, flawed, and ruined harvests on BG–107. Checks covered the five angled cuts, dragging a blister clear, spraying and wiping the pearl in stages, and the closed-start peel with mouse and emulated touch.
 
 ## Next milestones
 

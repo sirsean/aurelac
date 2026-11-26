@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { point } from '../src/geometry.js';
 import {
-  CASE_CENTER, COMMON_PEARL, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
-  createHarvest, moveHarvestGesture, openBlisters, placePearl, readyToLift, storeHarvest, wetCoverage,
+  BLISTER_TIMING, CASE_CENTER, COMMON_PEARL, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
+  createHarvest, dragClearsOpening, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean,
+  readyToLift, storeHarvest,
 } from '../src/harvest.js';
 import { createSpecimen } from '../src/specimen.js';
 
@@ -25,29 +26,67 @@ function stroke(harvest, tool, start, end, time = openedAt + 100) {
   return { event, gesture };
 }
 
+function relaxedTime(blister, cycles = 1) {
+  return openedAt + BLISTER_TIMING.cycle * cycles - BLISTER_TIMING.stagger * blister.index + 140;
+}
+
+function liftBlister(harvest, blister) {
+  const outside = point(blister.center.x, blister.center.y < harvest.pocket.y ? 67 : 309);
+  assert.equal(dragClearsOpening(harvest, outside), true);
+  const { gesture } = stroke(harvest, 'grip', blister.center, outside);
+  assert.deepEqual(gesture.preview, outside);
+  assert.equal(blister.removed, false);
+  return finishHarvestGesture(harvest, gesture);
+}
+
 function freeBlister(harvest, blister) {
-  assert.equal(stroke(harvest, 'blade', blisterFold(blister, 0), blisterFold(blister, 1)).event, 'blister-cut');
+  const { event, gesture } = stroke(harvest, 'blade', blisterFold(blister, 0), blisterFold(blister, 1),
+    relaxedTime(blister));
+  assert.equal(gesture.blister, blister);
+  assert.equal(event, 'blister-cut');
   assert.equal(readyToLift(blister), true);
-  return stroke(harvest, 'grip', blister.center, point(blister.center.x, blister.center.y - 32)).event;
+  return liftBlister(harvest, blister);
 }
 
-function coat(harvest) {
-  assert.equal(beginHarvestGesture(harvest, 'fazer', PEARL_CENTER).placedDrop, true);
-  assert.ok(wetCoverage(harvest) > 0 && wetCoverage(harvest) < 1);
+function pearlPoint(x, y) {
+  return point(PEARL_CENTER.x + x, PEARL_CENTER.y + y);
+}
 
-  // Inspection can reveal an untreated side before a second drop and roll.
-  stroke(harvest, 'grip', PEARL_CENTER, point(PEARL_CENTER.x + 46, PEARL_CENTER.y));
-  assert.ok(wetCoverage(harvest) < 1);
-  harvest.light = true;
-  beginHarvestGesture(harvest, 'fazer', point(PEARL_CENTER.x - 10, PEARL_CENTER.y + 8));
-  for (let turn = 0; turn < 3 && wetCoverage(harvest) < 1; turn++) {
-    stroke(harvest, 'grip', PEARL_CENTER, point(PEARL_CENTER.x + 75, PEARL_CENTER.y));
+function wipeRow(harvest, y) {
+  return stroke(harvest, 'wipe', pearlPoint(-24, y), pearlPoint(24, y));
+}
+
+function cleanPearl(harvest) {
+  assert.equal(wipeRow(harvest, 0).event, 'coating-sticky');
+  assert.ok(harvest.pearl.coating.every(({ amount }) => amount === 1));
+
+  const first = beginHarvestGesture(harvest, 'fazer', pearlPoint(-15, -16));
+  assert.deepEqual(first.sprayContact, pearlPoint(-15, -16));
+  assert.ok(harvest.pearl.coating.some(({ treated }) => treated));
+  assert.ok(harvest.pearl.coating.some(({ treated }) => !treated));
+
+  wipeRow(harvest, -16);
+  assert.ok(harvest.pearl.coating.some(({ amount }) => amount < 1));
+  assert.equal(pearlIsClean(harvest), false);
+
+  for (const y of [-18, 0, 20]) stroke(harvest, 'fazer', pearlPoint(-21, y), pearlPoint(21, y));
+  assert.ok(harvest.pearl.coating.every(({ treated }) => treated));
+  assert.equal(pearlIsClean(harvest), false);
+  for (let pass = 0; pass < 3 && !pearlIsClean(harvest); pass++) {
+    for (const y of [-21, -9, 5, 18, 24]) wipeRow(harvest, y);
   }
-  assert.equal(wetCoverage(harvest), 1);
+  assert.equal(pearlIsClean(harvest), true);
 }
 
-test('the same bench supports a pristine harvest with a paused cut and a second fazer pass', () => {
+function place(harvest, start, end) {
+  return finishHarvestGesture(harvest, stroke(harvest, 'case', start, end).gesture);
+}
+
+test('five blisters have different fold angles and the first cut can pause and resume', () => {
   const harvest = bench();
+  assert.equal(harvest.blisters.length, 5);
+  assert.equal(new Set(harvest.blisters.map(({ axis }) => Math.atan2(axis.y, axis.x))).size, 5);
+
   const first = harvest.blisters[0];
   stroke(harvest, 'blade', blisterFold(first, 0), blisterFold(first, 0.4));
   assert.ok(first.cut.some(Boolean));
@@ -55,16 +94,40 @@ test('the same bench supports a pristine harvest with a paused cut and a second 
   assert.equal(stroke(harvest, 'grip', first.center, point(first.center.x, first.center.y - 31)).event,
     'blister-attached');
   assert.equal(blisterPose(first, openedAt + 1500).settled, false);
-  assert.equal(blisterPose(first, openedAt + 2750).settled, true);
-  assert.equal(stroke(harvest, 'blade', blisterFold(first, 0.38), blisterFold(first, 1), openedAt + 2750).event,
-    'blister-cut');
-  assert.equal(stroke(harvest, 'grip', first.center, point(first.center.x, first.center.y - 31)).event,
-    'blister-lifted');
-  assert.equal(freeBlister(harvest, harvest.blisters[1]), 'blister-lifted');
-  assert.equal(freeBlister(harvest, harvest.blisters[2]), 'pearl-revealed');
-  coat(harvest);
+  assert.equal(stroke(harvest, 'blade', blisterFold(first, 0.38), blisterFold(first, 1),
+    relaxedTime(first)).event, 'blister-cut');
+});
+
+test('a freed blister follows Grip and is removed only on release outside the opening', () => {
+  const harvest = bench();
+  const first = harvest.blisters[0];
+  stroke(harvest, 'blade', blisterFold(first, 0), blisterFold(first, 1));
+  assert.equal(readyToLift(first), true);
+
+  const tap = beginHarvestGesture(harvest, 'grip', first.center);
+  assert.equal(finishHarvestGesture(harvest, tap), null);
+  const inside = point(first.center.x + 7, first.center.y + 14);
+  const { gesture } = stroke(harvest, 'grip', first.center, inside);
+  assert.deepEqual(gesture.preview, inside);
+  assert.equal(finishHarvestGesture(harvest, gesture), 'blister-in-husk');
+  assert.equal(first.removed, false);
+
+  const out = point(first.center.x, first.center.y - 101);
+  const canceled = stroke(harvest, 'grip', first.center, out).gesture;
+  assert.deepEqual(canceled.preview, out);
+  assert.equal(first.removed, false);
+  assert.equal(liftBlister(harvest, first), 'blister-lifted');
+  for (const blister of harvest.blisters.slice(1, -1)) assert.equal(freeBlister(harvest, blister), 'blister-lifted');
+  assert.equal(harvest.stage, 'blisters');
+  assert.equal(freeBlister(harvest, harvest.blisters.at(-1)), 'pearl-revealed');
+});
+
+test('a pristine appraisal requires both spraying and rubbing off the coating', () => {
+  const harvest = bench();
+  for (const blister of harvest.blisters) freeBlister(harvest, blister);
+  cleanPearl(harvest);
   assert.equal(storeHarvest(harvest), null);
-  assert.equal(placePearl(harvest, stroke(harvest, 'case', PEARL_CENTER, CASE_CENTER).gesture), 'seated');
+  assert.equal(place(harvest, PEARL_CENTER, CASE_CENTER), 'seated');
   const result = storeHarvest(harvest);
   assert.equal(result.outcome, 'Pristine');
   assert.equal(result.clarity, COMMON_PEARL.clarity);
@@ -72,17 +135,19 @@ test('the same bench supports a pristine harvest with a paused cut and a second 
   assert.equal(storeHarvest(harvest), result);
 });
 
-test('an acid nick stays on its own side of a recovered pearl and reduces final clarity', () => {
+test('acid clouding stays on its side and can be inspected once the coating is clean', () => {
   const harvest = bench();
-  const { x, y } = harvest.blisters[1].center;
-  assert.equal(stroke(harvest, 'blade', point(x, y - 13), point(x, y + 4)).event, 'acid-nick');
+  const { center, axis } = harvest.blisters[1];
+  const tissue = (travel) => point(center.x + axis.x * travel, center.y + axis.y * travel);
+  assert.equal(stroke(harvest, 'blade', tissue(-12), tissue(5)).event, 'acid-nick');
   for (const blister of harvest.blisters) freeBlister(harvest, blister);
   const scar = harvest.damage.scars[0];
-  coat(harvest);
+  cleanPearl(harvest);
+  stroke(harvest, 'wipe', PEARL_CENTER, pearlPoint(37, 0));
   assert.notEqual(harvest.pearl.rotation, 0);
   assert.equal(harvest.damage.scars[0], scar);
   assert.equal(scar.blister, 1);
-  placePearl(harvest, stroke(harvest, 'case', PEARL_CENTER, CASE_CENTER).gesture);
+  place(harvest, PEARL_CENTER, CASE_CENTER);
   const result = storeHarvest(harvest);
   assert.equal(result.outcome, 'Flawed');
   assert.equal(result.amberDepth, COMMON_PEARL.amberDepth);
@@ -107,14 +172,14 @@ test('forcing a swollen seam can ruin the root pearl and records the tray loss',
   assert.equal(harvest.appraisal.clarity, 0);
 });
 
-test('the case can be re-seated or closed on the rim with a visible chip penalty', () => {
+test('the case can be re-seated or closed on the rim with a chip penalty', () => {
   const harvest = bench();
   for (const blister of harvest.blisters) freeBlister(harvest, blister);
   const rim = point(CASE_CENTER.x + 26, CASE_CENTER.y);
-  assert.equal(placePearl(harvest, stroke(harvest, 'case', PEARL_CENTER, rim).gesture), 'rim');
-  assert.equal(placePearl(harvest, stroke(harvest, 'case', rim, CASE_CENTER).gesture), 'seated');
-  assert.equal(placePearl(harvest, stroke(harvest, 'case', CASE_CENTER, rim).gesture), 'rim');
+  assert.equal(place(harvest, PEARL_CENTER, rim), 'rim');
+  assert.equal(place(harvest, rim, CASE_CENTER), 'seated');
+  assert.equal(place(harvest, CASE_CENTER, rim), 'rim');
   const result = storeHarvest(harvest);
   assert.match(result.observation, /Chipped/);
-  assert.match(result.observation, /Untreated haze/);
+  assert.match(result.observation, /Coating remains/);
 });

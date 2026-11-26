@@ -1,6 +1,10 @@
 import { distance } from './geometry.js';
 
 const lifetime = 360;
+const palettes = {
+  diffuser: { ripple: '#fbe5c8', outline: '#63443b', drop: '#ffefd5' },
+  fazer: { ripple: '#d4f6dc', outline: '#356a5d', drop: '#afeed4' },
+};
 const droplets = [
   { x: -24, y: -11, size: 2.5 },
   { x: -14, y: 14, size: 1.9 },
@@ -10,32 +14,34 @@ const droplets = [
   { x: 13, y: 10, size: 1.8 },
 ];
 
-export function createDiffuserSplash(reducedMotion) {
+export function createLiquidSplash(reducedMotion) {
   let bursts = [];
 
   return {
-    add(point, time) {
+    add(point, time, liquid = 'diffuser') {
       if (reducedMotion) return;
       const last = bursts.at(-1);
-      if (last && (time - last.time < 42 || (time - last.time < 145 && distance(point, last.point) < 12))) return;
-      bursts.push({ point, time });
+      if (last?.liquid === liquid
+        && (time - last.time < 42 || (time - last.time < 145 && distance(point, last.point) < 12))) return;
+      bursts.push({ point, time, liquid });
     },
 
     draw(ctx, time) {
       bursts = bursts.filter((burst) => time - burst.time < lifetime);
       ctx.save();
-      for (const { point, time: start } of bursts) {
+      for (const { point, time: start, liquid } of bursts) {
+        const palette = palettes[liquid];
         const progress = Math.max(0, (time - start) / lifetime);
         ctx.globalAlpha = (1 - progress) ** 1.3;
         const radius = 3 + 19 * progress;
         ctx.beginPath();
         ctx.ellipse(point.x, point.y + 2, radius, radius * 0.44, -0.12, 0, 2 * Math.PI);
-        ctx.strokeStyle = '#fbe5c8';
+        ctx.strokeStyle = palette.ripple;
         ctx.lineWidth = 1.65;
         ctx.stroke();
 
-        ctx.strokeStyle = '#63443b';
-        ctx.fillStyle = '#ffefd5';
+        ctx.strokeStyle = palette.outline;
+        ctx.fillStyle = palette.drop;
         ctx.lineWidth = 0.75;
         const spread = 0.28 + progress * 0.95;
         for (const drop of droplets) {

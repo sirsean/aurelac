@@ -1,8 +1,8 @@
 import {
   ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
-import { createDiffuserSplash } from './diffuser-splash.js';
-import { drawBlisters, drawPearlBench } from './harvest-render.js';
+import { createLiquidSplash } from './liquid-splash.js';
+import { drawBlisters, drawLiftedBlisters, drawPearlBench } from './harvest-render.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
 
 const shell = new Path2D(
@@ -561,7 +561,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   const ctx = canvas.getContext('2d');
   const tray = createTrayLayer();
   const lobes = createLobeLayer();
-  const splash = createDiffuserSplash(reducedMotion);
+  const splash = createLiquidSplash(reducedMotion);
   let body;
   let seed;
   let pose = null;
@@ -601,7 +601,8 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     ctx.lineJoin = 'round';
     ctx.drawImage(tray, 0, 0, BOARD.width, BOARD.height);
     if (['pearl', 'ruined', 'stored'].includes(harvest.stage)) {
-      return drawPearlBench(ctx, harvest, gesture, time, reducedMotion);
+      const animating = drawPearlBench(ctx, harvest, gesture, time, reducedMotion);
+      return splash.draw(ctx, time) || animating;
     }
     const workingBlisters = harvest.stage === 'blisters';
     ctx.save();
@@ -613,11 +614,12 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     const ranges = drawSeam(ctx, specimen, lobes);
     let pulsing = false;
     drawOpening(ctx, specimen, ranges, pose, gesture, workingBlisters
-      ? () => { pulsing = drawBlisters(ctx, harvest, time, reducedMotion, debug); }
+      ? () => { pulsing = drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug); }
       : null);
     if (!finished && ranges.length) drawFlap(ctx, specimen, ranges, pose);
     if (!workingBlisters) drawContact(ctx, gesture);
     ctx.restore();
+    if (workingBlisters) drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion);
     if (release) {
       release.start ??= time;
       const progress = clamp((time - release.start) / 240);
