@@ -1,5 +1,5 @@
 import {
-  ATTACHMENTS, LOBE_WIDTH, PEEL_DIRECTION, SEAM, TUNING,
+  ATTACHMENTS, LOBE_WIDTH, SEAM, TUNING,
   between, clamp, closestSeam, distance, mix, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
 
@@ -45,7 +45,7 @@ export function peelHandle(specimen, index = peelFront(specimen)) {
   if (index < 0) return null;
   const base = ATTACHMENTS[index];
   const lift = mix(11, 26, specimen.attachments[index].wetness);
-  return point(base.x + lift * PEEL_DIRECTION.x, base.y + lift * PEEL_DIRECTION.y);
+  return point(base.x + lift * base.direction.x, base.y + lift * base.direction.y);
 }
 
 export function canGrip(specimen, location) {
@@ -66,6 +66,7 @@ export function beginGesture(specimen, tool, location, time = 0) {
   dryMembrane(specimen, time);
   if (tool === 'grip' && !canGrip(specimen, location)) return null;
   const diffusing = tool === 'diffuser' && diffuserContact(specimen, location, TUNING.diffuserFirstContact);
+  const front = tool === 'grip' ? peelFront(specimen) : -1;
   return {
     tool,
     start: location,
@@ -73,7 +74,8 @@ export function beginGesture(specimen, tool, location, time = 0) {
     contact: location,
     diffusing,
     wetContact: diffusing ? location : null,
-    handle: tool === 'grip' ? peelHandle(specimen) : null,
+    handle: peelHandle(specimen, front),
+    direction: ATTACHMENTS[front]?.direction,
     travelUntilContact: tool === 'blade' ? TUNING.bladeTravel : TUNING.contactStep,
     pinned: false,
     recovery: 0,
@@ -130,17 +132,18 @@ function diffuserContact(specimen, location, travel) {
 
 function catchAt(specimen, index, aligned) {
   const base = ATTACHMENTS[index];
+  if (!aligned) return { cause: 'angle', point: base };
   const range = openingAt(specimen.cut, base.seamT);
   if (!range || range.width < LOBE_WIDTH - 0.01) {
+    const blockedEnd = base.direction.x > 0 ? 0.18 : 0.82;
     const lip = range
-      ? Math.round(range.start + 0.18 * (range.end - range.start))
+      ? Math.round(range.start + blockedEnd * (range.end - range.start))
       : Math.round(base.seamT * TUNING.seamSegments);
     return { cause: 'husk', point: range ? openingLip(range, lip, 1) : offset(SEAM[lip], 3) };
   }
   if (specimen.attachments[index].wetness < TUNING.minimumWetness) {
     return { cause: 'dry', point: base };
   }
-  if (!aligned) return { cause: 'angle', point: base };
   return null;
 }
 
@@ -150,7 +153,8 @@ export function continuePeel(specimen, gesture, time) {
   const dx = gesture.contact.x - gesture.start.x;
   const dy = gesture.contact.y - gesture.start.y;
   const rawLoad = Math.hypot(dx, dy);
-  const projected = dx * PEEL_DIRECTION.x + dy * PEEL_DIRECTION.y;
+  const direction = gesture.direction;
+  const projected = dx * direction.x + dy * direction.y;
   const aligned = projected >= rawLoad * TUNING.peelAlignment;
   const slip = gesture.pinned ? 0 : 0.07;
   const load = rawLoad * (1 - slip);
@@ -179,16 +183,19 @@ export function continuePeel(specimen, gesture, time) {
   const overstretched = catchPoint && blockedTravel > TUNING.tearInput - (nicked ? 18 : 0);
   const dryPull = catchPoint?.cause === 'dry' && drive >= TUNING.dryTearInput;
   const yank = index < end && !catchPoint && drive - gesture.peelTravel >= TUNING.wetYankInput;
+  const reversePull = -projected * (1 - slip) >= TUNING.wrongWayTearInput - (nicked ? 12 : 0);
   let event = null;
 
-  if ((dryPull || overstretched || yank) && load >= gesture.previousLoad) {
+  if ((dryPull || overstretched || yank || reversePull) && load >= gesture.previousLoad) {
     for (let remainder = index; remainder < end; remainder++) {
       specimen.attachments[remainder].state = 'released';
     }
     specimen.attachments[index].state = 'torn';
     specimen.attachments[index].tearAt = catchPoint?.point ?? ATTACHMENTS[index];
     gesture.finished = true;
-    event = dryPull ? 'dry-tear' : 'tear';
+    if (dryPull) event = 'dry-tear';
+    else if (reversePull) event = 'reverse-tear';
+    else event = 'tear';
   } else if (index === end) {
     gesture.finished = true;
     event = exposed(specimen) ? 'peeled' : 'piece';
@@ -198,6 +205,7 @@ export function continuePeel(specimen, gesture, time) {
   const ratio = rawLoad ? elastic / rawLoad : 0;
   gesture.pull = {
     target: point(gesture.handle.x + dx * ratio, gesture.handle.y + dy * ratio),
+    direction: aligned ? direction : point(dx / rawLoad, dy / rawLoad),
     anchor: catchPoint?.point ?? ATTACHMENTS[Math.min(index, end - 1)],
     load: tension,
     catch: catchPoint?.cause ?? null,

@@ -25,6 +25,7 @@ export const TUNING = {
   tearInput: 120,
   dryTearInput: 29,
   wetYankInput: 57,
+  wrongWayTearInput: 76,
 };
 
 export function point(x, y) {
@@ -71,12 +72,17 @@ export const SEAM = Array.from(
   (_, index) => seamSample(index / TUNING.seamSegments),
 );
 
-export const ATTACHMENTS = Array.from({ length: 12 }, (_, index) => {
-  const sample = seamSample(mix(0.65, 0.37, index / 11));
-  return { ...offset(sample, -6), seamT: sample.t };
+const right = point(0.94, 0.342);
+const left = point(-0.94, 0.342);
+const sectionDirections = [right, left, right];
+const attachmentCount = sectionDirections.length * TUNING.attachmentsPerSection;
+
+export const ATTACHMENTS = Array.from({ length: attachmentCount }, (_, index) => {
+  const sample = seamSample(mix(0.65, 0.37, index / (attachmentCount - 1)));
+  const direction = sectionDirections[Math.floor(index / TUNING.attachmentsPerSection)];
+  return { ...offset(sample, -6), seamT: sample.t, direction };
 });
 
-export const PEEL_DIRECTION = point(0.94, 0.342);
 export const LOBE_WIDTH = 102;
 
 export function openings(cut) {

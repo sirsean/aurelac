@@ -1,5 +1,5 @@
 import {
-  ATTACHMENTS, BOARD, PEEL_DIRECTION, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
+  ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
 import { createDiffuserSplash } from './diffuser-splash.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
@@ -232,7 +232,7 @@ function drawMembrane(ctx, specimen, pose) {
 
   const base = ATTACHMENTS[front];
   const unstretched = peelHandle(specimen, front);
-  const bend = pose?.load ?? 0;
+  const bend = pose?.catch === 'angle' ? 0 : (pose?.load ?? 0);
   const loadPoint = pose?.anchor ?? base;
   const target = pose?.target ?? unstretched;
   const cover = new Path2D();
@@ -339,11 +339,14 @@ function drawFlap(ctx, specimen, ranges, pose) {
   const wet = specimen.attachments[front].wetness;
 
   const tip = pose?.target ?? peelHandle(specimen, front);
-  const base = pose?.anchor ?? ATTACHMENTS[front + 1] ?? ATTACHMENTS[front];
+  const attachment = ATTACHMENTS[front];
+  const base = pose?.anchor ?? attachment;
   const tension = pose?.load ?? 0;
-  const dx = tip.x - base.x;
+  const bunch = pose?.catch === 'angle' ? tension : 0;
+  const facing = Math.sign(attachment.direction.x);
+  const dx = (tip.x - base.x) * facing;
   const dy = tip.y - base.y;
-  const direction = Math.atan2(PEEL_DIRECTION.y, PEEL_DIRECTION.x);
+  const direction = Math.atan2(attachment.direction.y, Math.abs(attachment.direction.x));
   const turn = clamp(Math.atan2(dy, dx) - direction, -0.48, 0.48);
   const angle = direction + turn;
   const length = Math.max(8, dx * Math.cos(angle) + dy * Math.sin(angle));
@@ -352,6 +355,7 @@ function drawFlap(ctx, specimen, ranges, pose) {
 
   ctx.save();
   ctx.translate(base.x, base.y);
+  ctx.scale(facing, 1);
   ctx.rotate(angle);
 
   const flap = new Path2D();
@@ -373,6 +377,23 @@ function drawFlap(ctx, specimen, ranges, pose) {
     fold.moveTo(-3, crease * 4);
     fold.quadraticCurveTo(length * 0.47, crease * width - 3, length - rim * 0.5, crease * width);
     line(ctx, fold, '#774b4498', 0.85);
+  }
+
+  if (bunch > 0) {
+    const wrinkles = new Path2D();
+    for (const mark of [0, 1, 2]) {
+      const x = -9 + mark * mix(6, 3, bunch);
+      const depth = (9 + 7 * bunch) * (1 - mark * 0.14);
+      wrinkles.moveTo(x + 2, -depth);
+      wrinkles.quadraticCurveTo(x - 4, -2, x + 2, depth);
+    }
+    ctx.globalAlpha = bunch;
+    line(ctx, wrinkles, '#633934', 2.5);
+    ctx.save();
+    ctx.translate(-1.8, -0.3);
+    line(ctx, wrinkles, '#ffc5a8', 1.35);
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // The dark underside opens at the free end. Its bright rim follows the grip point.
@@ -402,7 +423,7 @@ function drawFlap(ctx, specimen, ranges, pose) {
   }
 }
 
-function drawDetachedFlap(ctx, tip, progress, torn) {
+function drawDetachedFlap(ctx, { tip, direction, torn }, progress) {
   const curl = new Path2D(torn
     ? 'M-16 19L-8 11L-12 7L1 4L-2-3L11-3L10-9C23-16 39-8 35 3C31 14 14 18 3 15L-1 23L-7 19L-18 27Z'
     : 'M-16 19C-12 3 2-13 23-12C39-11 40 8 24 13C11 17 7 8 1 14C-4 19-9 28-18 27Z');
@@ -410,7 +431,8 @@ function drawDetachedFlap(ctx, tip, progress, torn) {
     ? 'M12-8C28-15 38-3 30 5C26 9 21 11 18 10'
     : 'M-13 20C-7 2 9-11 27-7C35-5 35 5 28 7C15 10 11 0 3 8');
   ctx.save();
-  ctx.translate(tip.x + PEEL_DIRECTION.x * 74 * progress, tip.y + PEEL_DIRECTION.y * 74 * progress);
+  ctx.translate(tip.x + direction.x * 74 * progress, tip.y + direction.y * 74 * progress);
+  ctx.scale(Math.sign(direction.x) || 1, 1);
   ctx.rotate((torn ? -1.5 : 0.8) * progress);
   ctx.scale(1 - 0.34 * progress, 1 - 0.34 * progress);
   ctx.globalAlpha = 1 - progress;
@@ -421,21 +443,25 @@ function drawDetachedFlap(ctx, tip, progress, torn) {
 }
 
 function drawDamage(ctx, specimen) {
-  for (const attachment of specimen.attachments) {
+  for (const [index, attachment] of specimen.attachments.entries()) {
     if (!attachment.tearAt) continue;
     const { x, y } = attachment.tearAt;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(Math.sign(ATTACHMENTS[index].direction.x), 1);
     const remnant = new Path2D();
-    remnant.moveTo(x, y);
-    remnant.bezierCurveTo(x + 7, y - 3, x + 12, y - 24, x + 35, y - 24);
-    remnant.quadraticCurveTo(x + 34, y - 17, x + 45, y - 16);
-    remnant.lineTo(x + 33, y - 13);
-    remnant.quadraticCurveTo(x + 29, y - 13, x + 32, y - 7);
-    remnant.lineTo(x + 21, y - 8);
-    remnant.quadraticCurveTo(x + 16, y - 6, x + 18, y + 1);
-    remnant.quadraticCurveTo(x + 8, y + 3, x, y);
+    remnant.moveTo(0, 0);
+    remnant.bezierCurveTo(7, -3, 12, -24, 35, -24);
+    remnant.quadraticCurveTo(34, -17, 45, -16);
+    remnant.lineTo(33, -13);
+    remnant.quadraticCurveTo(29, -13, 32, -7);
+    remnant.lineTo(21, -8);
+    remnant.quadraticCurveTo(16, -6, 18, 1);
+    remnant.quadraticCurveTo(8, 3, 0, 0);
     remnant.closePath();
-    fill(ctx, remnant, radial(ctx, x + 18, y - 13, 32, materials.membrane));
+    fill(ctx, remnant, radial(ctx, 18, -13, 32, materials.membrane));
     line(ctx, remnant, '#623f36', 1.3);
+    ctx.restore();
   }
   for (const nick of specimen.nicks) {
     const mark = new Path2D();
@@ -561,6 +587,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
         target: between(pose.target, handle, decay),
         anchor: between(pose.anchor, ATTACHMENTS[peelFront(specimen)], decay),
         load: pose.load * (1 - decay),
+        catch: pose.catch,
       };
       if (distanceSquared(pose.target, handle) < 0.8) pose = null;
     } else {
@@ -585,7 +612,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     if (release) {
       release.start ??= time;
       const progress = clamp((time - release.start) / 240);
-      if (progress < 1) drawDetachedFlap(ctx, release.tip, progress, release.torn);
+      if (progress < 1) drawDetachedFlap(ctx, release, progress);
       else release = null;
     }
     const splashing = splash.draw(ctx, time);
@@ -596,9 +623,9 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   return {
     draw,
     splash: splash.add,
-    detach(tip, torn = false) {
+    detach(pull, torn = false) {
       pose = null;
-      if (!reducedMotion) release = { tip, torn, start: null };
+      if (!reducedMotion) release = { tip: pull.target, direction: pull.direction, torn, start: null };
     },
     clearMotion() {
       pose = null;

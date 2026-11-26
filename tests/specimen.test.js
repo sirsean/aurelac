@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ATTACHMENTS, PEEL_DIRECTION, SEAM, TUNING, between, offset, openingAt, openings, point, seamPoint } from '../src/geometry.js';
+import { ATTACHMENTS, SEAM, TUNING, between, offset, openingAt, openings, point, seamPoint } from '../src/geometry.js';
 import {
   beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelFront, peelHandle, peelIsWet,
 } from '../src/specimen.js';
@@ -23,7 +23,7 @@ function trace(specimen, tool, start, end, steps = 25) {
   return draw(specimen, tool, Array.from({ length: steps + 1 }, (_, index) => seamPoint(start + (end - start) * index / steps)));
 }
 
-function pull(specimen, length = 53, direction = PEEL_DIRECTION) {
+function pull(specimen, length = 53, direction = ATTACHMENTS[peelFront(specimen)].direction) {
   const handle = peelHandle(specimen);
   return draw(specimen, 'grip', [handle, point(handle.x + length * direction.x, handle.y + length * direction.y)]);
 }
@@ -72,16 +72,18 @@ test('a short slit catches at the lip and extending either end preserves the dam
 
 test('three clean sections require separate grips and fresh diffuser on each new fold', () => {
   const specimen = openSpecimen();
-  const dryTip = peelHandle(specimen);
   const sections = ATTACHMENTS.length / TUNING.attachmentsPerSection;
 
   for (let section = 0; section < sections; section++) {
     const front = section * TUNING.attachmentsPerSection;
+    const dryTip = peelHandle(specimen);
     assert.equal(peelFront(specimen), front);
     assert.equal(peelIsWet(specimen), false);
     wetFold(specimen);
     assert.ok(peelIsWet(specimen));
-    if (section === 0) assert.ok(peelHandle(specimen).x > dryTip.x);
+    const facing = [1, -1, 1][section];
+    assert.equal(Math.sign(peelHandle(specimen).x - dryTip.x), facing);
+    assert.equal(Math.sign(peelHandle(specimen).x - ATTACHMENTS[front].x), facing);
 
     const last = section === sections - 1;
     const { gesture, result } = pull(specimen);
@@ -100,7 +102,8 @@ test('a short flick stretches the wet fold and a hard yank tears it', () => {
   const tip = peelHandle(specimen);
   const time = specimen.wetnessTime;
   const gesture = beginGesture(specimen, 'grip', tip, time);
-  const target = (travel) => point(tip.x + travel * PEEL_DIRECTION.x, tip.y + travel * PEEL_DIRECTION.y);
+  const direction = ATTACHMENTS[0].direction;
+  const target = (travel) => point(tip.x + travel * direction.x, tip.y + travel * direction.y);
   assert.equal(moveGesture(specimen, gesture, target(24), time + 12), null);
   assert.equal(moveGesture(specimen, gesture, target(50), time + 26), null);
   assert.equal(peelFront(specimen), 0);
@@ -144,16 +147,43 @@ test('a moderate pull on a dried fold tears that section and leaves a remnant', 
   assert.equal(specimen.attachments.filter(({ tearAt }) => tearAt).length, 1);
 });
 
-test('pulling inward bunches the wet fold and easing off is safe', () => {
+test('a gentle wrong-way pull bunches either facing and can be corrected with the same grip', () => {
   const specimen = openSpecimen();
+  for (const front of [0, TUNING.attachmentsPerSection]) {
+    wetFold(specimen);
+    const handle = peelHandle(specimen);
+    const direction = ATTACHMENTS[front].direction;
+    const { gesture, result } = pull(specimen, -48);
+    assert.equal(result, undefined);
+    assert.equal(gesture.pull.catch, 'angle');
+    assert.equal(peelFront(specimen), front);
+    assert.equal(specimen.attachments[front].state, 'attached');
+
+    const time = specimen.wetnessTime;
+    moveGesture(specimen, gesture, handle, time + 16);
+    assert.equal(gesture.pull.load, 0);
+    assert.equal(moveGesture(specimen, gesture, point(handle.x + 53 * direction.x, handle.y + 53 * direction.y),
+      time + 32), null);
+    assert.equal(continuePeel(specimen, gesture, time + 240), 'piece');
+  }
+});
+
+test('forcing a bunched fold tears that section and the next fold can be peeled cleanly', () => {
+  const specimen = openSpecimen();
+  for (const front of [0, TUNING.attachmentsPerSection]) {
+    wetFold(specimen);
+    const direction = ATTACHMENTS[front].direction;
+    const { gesture, result } = pull(specimen, -91);
+    assert.equal(result, 'reverse-tear');
+    assert.equal(gesture.finished, true);
+    assert.equal(gesture.pull.catch, 'angle');
+    assert.equal(Math.sign(gesture.pull.direction.x), -Math.sign(direction.x));
+    assert.deepEqual(specimen.attachments[front].tearAt, ATTACHMENTS[front]);
+    assert.equal(peelFront(specimen), front + TUNING.attachmentsPerSection);
+  }
   wetFold(specimen);
-  const handle = peelHandle(specimen);
-  const { gesture } = pull(specimen, 55, point(-1, 0));
-  assert.equal(gesture.pull.catch, 'angle');
-  assert.equal(peelFront(specimen), 0);
-  moveGesture(specimen, gesture, handle, specimen.wetnessTime + 16);
-  assert.equal(gesture.pull.load, 0);
-  assert.equal(specimen.attachments[0].state, 'attached');
+  assert.equal(pull(specimen).result, 'peeled');
+  assert.equal(specimen.attachments.filter(({ tearAt }) => tearAt).length, 2);
 });
 
 test('forcing a short opening tears a section and caps the visible stretch', () => {

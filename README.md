@@ -44,9 +44,9 @@ Reset restores the closed specimen in either mode. The proposed gate is at least
 
 The model suite covers short-slit recovery from either end, dry catches, outward pulls, localized remnants, nicks, and sparse versus dense input sampling. Chromium 156 was exercised at 1280 × 900 with mouse input, at a narrow 320 × 640 viewport, and at 390 × 844 and 375 × 800 with touch emulation. The browser test completed a clean peel, interrupted a two-finger gesture, forced a tear, resized mid-stroke, and completed the damaged peel without resetting. A manual run on the published starter bench still caught after the first extension. Cutting the opposite end and rewetting the margin freed the flap. Fresh-player results and physical-phone performance are pending.
 
-The diffuser splashes on the exposed membrane. The sheen weakens as the fold dries, and the lip settles. Each of the three sections has its own exposed fold to wet. A fully soaked fold starts falling below the safe wetness threshold after about six seconds. An outward pull under steady tension releases one section. A sharp yank or a pull on a brittle fold leaves a ragged remnant.
+The diffuser splashes on the exposed membrane. The sheen weakens as the fold dries, and the lip settles. Each of the three sections has its own exposed fold to wet. A fully soaked fold starts falling below the safe wetness threshold after about six seconds. The raised lips curl right, left, and right. A steady pull in the direction of the curl releases one section. The fold bunches under a wrong-way tug and tears if the pull continues hard enough. A sharp yank or a pull on a brittle fold also leaves a ragged remnant.
 
-Model tests cover the closed start, one section per grip, timed drying and refreshing, and the clean and torn paths. Browser checks exercise the closed start and reset, the fade and dry tear, and three clean sections with mouse and emulated touch.
+Model tests cover the closed start, one section per grip, timed drying and refreshing, and clean and torn pulls in both directions. Browser checks exercise the closed start and reset, the fade and dry tear, recovery after a wrong-way tear, and three clean sections with mouse and emulated touch.
 
 ## After the prototype gate
 

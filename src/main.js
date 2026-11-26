@@ -40,6 +40,7 @@ const messages = {
   piece: 'One section came free. Wet the next fold.',
   tear: 'The section tears and leaves a ragged remnant.',
   'dry-tear': 'The dry section tears and leaves a ragged remnant.',
+  'reverse-tear': 'The bunched fold tears and leaves a ragged remnant.',
 };
 
 const toolHints = {
@@ -143,11 +144,11 @@ canvas.addEventListener('pointermove', (event) => {
 function reportInteraction(result, time) {
   const pull = gesture.pull;
   if (result === 'peeled' || result === 'piece') {
-    renderer.detach(pull.target);
+    renderer.detach(pull);
     const damaged = result === 'peeled' && specimen.attachments.some(({ state }) => state === 'torn');
     report(damaged ? 'Carrom lobe exposed. Ragged remnants remain.' : messages[result]);
-  } else if (result === 'tear' || result === 'dry-tear') {
-    renderer.detach(pull.target, true);
+  } else if (result === 'tear' || result === 'dry-tear' || result === 'reverse-tear') {
+    renderer.detach(pull, true);
     report(exposed(specimen) ? 'The last section tears. The carrom lobe is exposed with ragged remnants.' : messages[result]);
   } else if (!gesture.finished && pull?.catch && pull.load >= 0.14) {
     report(messages[pull.catch]);

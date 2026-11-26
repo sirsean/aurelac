@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { ATTACHMENTS, BOARD, PEEL_DIRECTION, TUNING, seamPoint } from '../src/geometry.js';
+import { ATTACHMENTS, BOARD, TUNING, seamPoint } from '../src/geometry.js';
 
 const baseUrl = process.env.AURELAC_TEST_URL ?? 'http://127.0.0.1:3000';
 const executablePath = process.env.AURELAC_CHROMIUM
@@ -88,12 +88,13 @@ async function expectCleanLobe(page) {
 
 function handle(index = 0) {
   const anchor = ATTACHMENTS[index];
-  return { x: anchor.x + 26 * PEEL_DIRECTION.x, y: anchor.y + 26 * PEEL_DIRECTION.y };
+  return { x: anchor.x + 26 * anchor.direction.x, y: anchor.y + 26 * anchor.direction.y };
 }
 
 function target(distance, index = 0) {
   const start = handle(index);
-  return { x: start.x + distance * PEEL_DIRECTION.x, y: start.y + distance * PEEL_DIRECTION.y };
+  const { direction } = ATTACHMENTS[index];
+  return { x: start.x + distance * direction.x, y: start.y + distance * direction.y };
 }
 
 async function startPeel(page, distance, index = 0, steps = 18) {
@@ -172,12 +173,16 @@ try {
     await trace(page, 0.33, 0.69, pinkSurface);
     await expectStatus(page, 'fold is glossy');
     await selectTool(page, 'Grip');
-    if (index === 0) {
-      await startPeel(page, -48);
+    if (index <= TUNING.attachmentsPerSection) {
+      await screenshot(page, `desktop-raised-fold-${index}`);
+      await startPeel(page, -48, index);
       await expectStatus(page, 'bunches');
-      await page.mouse.up();
+      await screenshot(page, `desktop-bunched-fold-${index}`);
+      const corrected = await boardPoint(page, target(53, index));
+      await page.mouse.move(corrected.x, corrected.y, { steps: 18 });
+    } else {
+      await startPeel(page, 53, index);
     }
-    await startPeel(page, 53, index);
     await expectStatus(page, finishedSection(index));
     await page.mouse.up();
   }
@@ -201,6 +206,24 @@ try {
   await expectStatus(page, 'dry section tears');
   await page.mouse.up();
   await screenshot(page, 'narrow-dry-tear');
+
+  const middle = TUNING.attachmentsPerSection;
+  await selectTool(page, 'Diffuser');
+  await trace(page, 0.33, 0.69, pinkSurface);
+  await expectStatus(page, 'fold is glossy');
+  await selectTool(page, 'Grip');
+  await startPeel(page, -92, middle);
+  await expectStatus(page, 'bunched fold tears');
+  await page.mouse.up();
+
+  await selectTool(page, 'Diffuser');
+  await trace(page, 0.33, 0.69, pinkSurface);
+  await expectStatus(page, 'fold is glossy');
+  await selectTool(page, 'Grip');
+  await startPeel(page, 53, middle * 2);
+  await expectStatus(page, 'Ragged remnants remain');
+  await page.mouse.up();
+  await screenshot(page, 'narrow-recovered-peel');
   assert.deepEqual(desktopErrors, []);
 
   const touch = await browser.newPage({
@@ -264,7 +287,7 @@ try {
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);
   assert.deepEqual(touchErrors, []);
-  console.log(`Passed closed starts, three clean sections, drying, dry tears, and interrupted touch in Chromium ${browser.version()}.`);
+  console.log(`Passed left and right peels, wrong-way recovery and tears, drying, and interrupted touch in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }
