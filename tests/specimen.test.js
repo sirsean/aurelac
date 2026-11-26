@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ATTACHMENTS, PEEL_DIRECTION, between, offset, openingAt, openings, point, seamPoint, SEAM } from '../src/geometry.js';
-import { beginGesture, createSpecimen, exposed, moveGesture, peelFront, peelHandle } from '../src/specimen.js';
+import { beginGesture, createSpecimen, exposed, moveGesture, peelFront, peelHandle, peelIsWet } from '../src/specimen.js';
 
 function draw(specimen, tool, locations) {
   const gesture = beginGesture(specimen, tool, locations[0]);
@@ -51,6 +51,23 @@ test('the short starter opening can be extended from either end', () => {
   }
 });
 
+test('a sweep across the face of the pink tissue prepares one short leftward peel', () => {
+  const specimen = createSpecimen();
+  const sweep = SEAM.slice(22, 44).map((sample) => offset(sample, 22));
+  assert.equal(draw(specimen, 'diffuser', sweep).result, undefined);
+  assert.equal(specimen.attachments.every(({ wetness }) => wetness === 0), true);
+
+  trace(specimen, 'blade', 0.2, 0.82);
+  assert.equal(draw(specimen, 'diffuser', sweep).result, 'wet');
+  assert.equal(peelIsWet(specimen), true);
+
+  const handle = peelHandle(specimen);
+  const start = point(handle.x + 17, handle.y + 12);
+  assert.equal(draw(specimen, 'grip', [start, point(start.x - 42, start.y - 9)]).result, 'peeled');
+  assert.equal(exposed(specimen), true);
+  assert.ok(specimen.attachments.every(({ state, tearAt }) => state === 'released' && !tearAt));
+});
+
 test('a dry attachment holds a wide slit open until a local sweep reaches it', () => {
   const specimen = createSpecimen({ starter: true });
   trace(specimen, 'blade', 0.64, 1);
@@ -84,6 +101,8 @@ test('forcing a caught flap caps stretch and leaves one localized remnant', () =
   assert.deepEqual(specimen.attachments[0].tearAt, gesture.pull.anchor);
   assert.ok(Math.hypot(gesture.pull.target.x - gesture.handle.x, gesture.pull.target.y - gesture.handle.y) <= 74.01);
   moveGesture(specimen, gesture, point(0, 0));
+  assert.equal(specimen.attachments.filter(({ state }) => state === 'torn').length, 1);
+  assert.equal(pull(specimen, 145).result, undefined);
   assert.equal(specimen.attachments.filter(({ state }) => state === 'torn').length, 1);
 
   trace(specimen, 'blade', 0.64, 1);

@@ -1,6 +1,6 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
-import { TOOLS, beginGesture, createSpecimen, exposed, moveGesture } from './specimen.js';
+import { TOOLS, beginGesture, createSpecimen, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { createRenderer } from './render.js';
 
 const params = new URLSearchParams(location.search);
@@ -27,13 +27,28 @@ let anchor = null;
 let frame = null;
 
 const messages = {
-  cut: 'The husk opens along the crease.',
-  nick: 'The blade nicks the membrane.',
-  wet: 'The membrane shines where the diffuser touched it.',
-  release: 'Part of the flap comes free.',
+  cut: 'Pink tissue is exposed. Sweep it with the diffuser.',
+  nick: 'The blade nicked the membrane. Keep the next cut on the crease.',
+  wet: 'The membrane shines where it is wet. Sweep toward any matte patches.',
+  soaked: 'The fold is wet. Use Grip to pull the raised corner to the left.',
+  husk: 'The flap caught on the husk. Extend the slit from either end.',
+  dry: 'A dry fold is holding the flap. Sweep the diffuser over the matte pink tissue.',
+  angle: 'The flap is stretching. Ease off and pull the raised corner back to the left.',
+  grab: 'Grab the raised pink fold near the left side of the opening.',
   peeled: 'The membrane is free. The carrom lobe is exposed.',
   tear: 'The membrane tears and leaves a pink remnant.',
 };
+
+const toolHints = {
+  blade: 'Trace the dark crease with the blade.',
+  diffuser: 'Sweep the diffuser over the exposed pink tissue.',
+  grip: 'Grab the raised pink corner and pull back to the left.',
+};
+
+function report(text) {
+  if (feedback.textContent !== text) feedback.textContent = text;
+  if (note.textContent !== text) note.textContent = text;
+}
 
 function render(time) {
   frame = null;
@@ -66,7 +81,7 @@ function reset() {
   specimen = createSpecimen({ starter });
   tool = starter ? 'grip' : 'blade';
   feedback.textContent = starter ? 'Starter slit restored.' : 'The specimen is intact.';
-  note.textContent = 'Open the node to expose the carrom lobe.';
+  note.textContent = toolHints[tool];
   renderer.clearMotion();
   updateTool();
   requestRender();
@@ -84,9 +99,13 @@ canvas.addEventListener('pointerdown', (event) => {
   const location = toBoard(event, canvas.getBoundingClientRect());
   if (primary === null) {
     const next = beginGesture(specimen, tool, location);
-    if (!next) return;
+    if (!next) {
+      if (tool === 'grip' && !exposed(specimen) && specimen.cut.some(Boolean)) report(messages.grab);
+      return;
+    }
     gesture = next;
     primary = event.pointerId;
+    if (next.diffusing) report(peelIsWet(specimen) ? messages.soaked : messages.wet);
   } else if (gesture?.tool === 'grip' && anchor === null
       && distance(location, point(197, 207)) <= TUNING.pinRadius) {
     anchor = event.pointerId;
@@ -107,13 +126,19 @@ canvas.addEventListener('pointermove', (event) => {
     result = moveGesture(specimen, gesture, toBoard(sample, rect)) ?? result;
   }
 
-  if (result) {
-    feedback.textContent = messages[result];
-    if (exposed(specimen)) {
-      note.textContent = specimen.attachments.some(({ state }) => state === 'torn')
-        ? 'Carrom lobe exposed. A pink remnant remains.'
-        : 'Carrom lobe exposed. The membrane came free.';
-    }
+  const pull = gesture.pull;
+  if (result === 'peeled') {
+    renderer.detach(pull.target);
+    const torn = specimen.attachments.some(({ state }) => state === 'torn');
+    report(torn ? 'Carrom lobe exposed. A pink remnant remains.' : messages.peeled);
+  } else if (result === 'tear') {
+    report(messages.tear);
+  } else if (!pull?.torn && pull?.catch && pull.load >= 0.14) {
+    report(messages[pull.catch]);
+  } else if (result === 'wet') {
+    report(peelIsWet(specimen) ? messages.soaked : messages.wet);
+  } else if (result === 'cut' || result === 'nick') {
+    report(messages[result]);
   }
   requestRender();
 });
@@ -139,12 +164,21 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) finishGesture();
 });
 
+function selectTool(next) {
+  if (next === tool || !TOOLS.includes(next)) return;
+  finishGesture();
+  tool = next;
+  updateTool();
+  if (!exposed(specimen)) note.textContent = toolHints[tool];
+}
+
 for (const button of tools) {
-  button.addEventListener('click', () => {
-    if (!TOOLS.includes(button.dataset.tool)) return;
-    finishGesture();
-    tool = button.dataset.tool;
-    updateTool();
+  button.addEventListener('click', () => selectTool(button.dataset.tool));
+  button.addEventListener('pointerup', (event) => {
+    // Chromium can suppress the synthetic click when a tap follows a quick swipe.
+    if (event.pointerType !== 'touch') return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    if (button.contains(target)) selectTool(button.dataset.tool);
   });
 }
 

@@ -5,20 +5,23 @@ export const TUNING = {
   seamSegments: 64,
   bladeRadius: 12,
   nickRadius: 20,
-  diffuserRadius: 24,
-  gripRadius: 37,
+  diffuserRadius: 40,
+  diffuserEdgeTolerance: 5,
+  diffuserFirstContact: 5,
+  gripRadius: 46,
   pinRadius: 128,
   contactStep: 3,
   bladeTravel: 4,
-  usefulOpening: 0.64,
+  usefulOpening: 0.53,
   starterCut: [22, 43],
-  minimumWetness: 0.52,
-  peelAlignment: 0.53,
-  peelThreshold: 18,
-  peelPerAttachment: 4.6,
+  minimumWetness: 0.46,
+  peelAlignment: 0.24,
+  peelThreshold: 12,
+  peelPerAttachment: 2.15,
   elasticLimit: 74,
   wetRecovery: 13,
-  tearInput: 112,
+  tearInput: 120,
+  tearSeparation: 24,
 };
 
 export function point(x, y) {
@@ -92,11 +95,14 @@ export function openingAt(cut, seamT) {
   return openings(cut).find(({ start, end }) => start <= segment && segment <= end);
 }
 
-export function openingLip(range, index, side) {
-  const sample = SEAM[index];
+export function openingHalfWidth(range, index) {
   const progress = (index - range.start) / (range.end - range.start);
   const taper = Math.sin(progress * Math.PI) ** 0.72;
-  return offset(sample, side * Math.min(range.width / 2, 75) * taper);
+  return Math.min(range.width / 2, 75) * taper;
+}
+
+export function openingLip(range, index, side) {
+  return offset(SEAM[index], side * openingHalfWidth(range, index));
 }
 
 export function closestSeam(location) {

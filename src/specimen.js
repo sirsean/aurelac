@@ -1,6 +1,6 @@
 import {
   ATTACHMENTS, LOBE_WIDTH, PEEL_DIRECTION, SEAM, TUNING,
-  between, clamp, closestSeam, distance, offset, openingAt, openingLip, point,
+  between, clamp, closestSeam, distance, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
 
 export const TOOLS = ['blade', 'diffuser', 'grip'];
@@ -37,8 +37,12 @@ export function canGrip(specimen, location) {
   const index = peelFront(specimen);
   const handle = peelHandle(specimen, index);
   if (!handle || distance(location, handle) > TUNING.gripRadius) return false;
-  return Boolean(openingAt(specimen.cut, ATTACHMENTS[index].seamT))
-    && (specimen.attachments[index].wetness >= 0.16 || index > 0);
+  return Boolean(openingAt(specimen.cut, ATTACHMENTS[index].seamT));
+}
+
+export function peelIsWet(specimen) {
+  return specimen.attachments.every(({ state, wetness }) =>
+    state !== 'attached' || wetness >= TUNING.minimumWetness);
 }
 
 export function beginGesture(specimen, tool, location) {
@@ -49,6 +53,7 @@ export function beginGesture(specimen, tool, location) {
     start: location,
     last: location,
     contact: location,
+    diffusing: tool === 'diffuser' && diffuserContact(specimen, location, TUNING.diffuserFirstContact),
     handle: tool === 'grip' ? peelHandle(specimen) : null,
     travelUntilContact: tool === 'blade' ? TUNING.bladeTravel : TUNING.contactStep,
     pinned: false,
@@ -69,7 +74,7 @@ function bladeContact(specimen, location) {
   }
 
   const opening = openingAt(specimen.cut, sample.t);
-  const pinkDepth = opening ? distance(sample, openingLip(opening, index, 1)) : 0;
+  const pinkDepth = opening ? openingHalfWidth(opening, index) : 0;
   if (gap <= Math.min(TUNING.nickRadius, pinkDepth - 1)
       && specimen.nicks.length < 6
       && specimen.nicks.every((nick) => distance(nick, location) > 14)) {
@@ -80,16 +85,22 @@ function bladeContact(specimen, location) {
 }
 
 function diffuserContact(specimen, location, travel) {
-  let wetted = false;
+  const { index: seamIndex, sample, gap } = closestSeam(location);
+  const range = openingAt(specimen.cut, sample.t);
+  if (!range || gap > openingHalfWidth(range, seamIndex) + TUNING.diffuserEdgeTolerance) return false;
+
+  let touched = false;
   for (const [index, base] of ATTACHMENTS.entries()) {
     const attachment = specimen.attachments[index];
-    if (attachment.state !== 'attached' || !openingAt(specimen.cut, base.seamT)) continue;
-    const gap = distance(location, base);
-    if (gap >= TUNING.diffuserRadius || attachment.wetness >= 1) continue;
-    attachment.wetness = clamp(attachment.wetness + travel * (1 - gap / TUNING.diffuserRadius) / 13);
-    wetted = true;
+    const segment = base.seamT * specimen.cut.length;
+    if (attachment.state !== 'attached' || segment < range.start || segment > range.end) continue;
+    // Measure along the exposed fold so sweeping through its wider pink area still wets the edge.
+    const alongFold = distance(sample, base);
+    if (alongFold >= TUNING.diffuserRadius) continue;
+    attachment.wetness = clamp(attachment.wetness + travel * (1 - alongFold / TUNING.diffuserRadius) / 12);
+    touched = true;
   }
-  return wetted ? 'wet' : null;
+  return touched;
 }
 
 function catchAt(specimen, index, aligned) {
@@ -116,11 +127,12 @@ function pullContact(specimen, gesture, location) {
   const aligned = projected >= rawLoad * TUNING.peelAlignment;
   const slip = gesture.pinned ? 0 : 0.07;
   const load = rawLoad * (1 - slip);
+  const peelTravel = Math.min(rawLoad, projected * 1.4) * (1 - slip);
   let index = peelFront(specimen);
   let released = 0;
 
-  while (index >= 0 && !gesture.torn && !catchAt(specimen, index, aligned)
-      && projected * (1 - slip) >= TUNING.peelThreshold + gesture.recovery) {
+  while (index >= 0 && !catchAt(specimen, index, aligned)
+      && peelTravel >= TUNING.peelThreshold + gesture.recovery) {
     specimen.attachments[index].state = 'released';
     gesture.recovery += TUNING.peelPerAttachment;
     released++;
@@ -129,12 +141,14 @@ function pullContact(specimen, gesture, location) {
 
   const catchPoint = index >= 0 ? catchAt(specimen, index, aligned) : null;
   const safeSlack = TUNING.wetRecovery + gesture.recovery;
-  const tension = clamp((load - safeSlack) / (TUNING.elasticLimit - safeSlack));
+  const tension = clamp((load - safeSlack) / (TUNING.elasticLimit - TUNING.wetRecovery));
   const blockedTravel = Math.max(0, load - gesture.recovery);
   const nicked = catchPoint && specimen.nicks.some((nick) => distance(nick, catchPoint.point) < 35);
+  const alreadyTorn = catchPoint && specimen.attachments.some(({ tearAt }) =>
+    tearAt && distance(tearAt, catchPoint.point) < TUNING.tearSeparation);
   let event = released ? (index < 0 ? 'peeled' : 'release') : null;
 
-  if (catchPoint && !gesture.torn && blockedTravel > TUNING.tearInput - (nicked ? 18 : 0)
+  if (catchPoint && !alreadyTorn && blockedTravel > TUNING.tearInput - (nicked ? 18 : 0)
       && load > gesture.previousLoad) {
     specimen.attachments[index].state = 'torn';
     specimen.attachments[index].tearAt = catchPoint.point;
@@ -157,7 +171,7 @@ function pullContact(specimen, gesture, location) {
 }
 
 export function moveGesture(specimen, gesture, location) {
-  if (!gesture) return null;
+  if (!gesture || gesture.torn || exposed(specimen)) return null;
   gesture.contact = location;
   if (gesture.tool === 'grip') return pullContact(specimen, gesture, location);
 
@@ -171,8 +185,9 @@ export function moveGesture(specimen, gesture, location) {
     if (gesture.tool === 'blade') {
       const feedback = bladeContact(specimen, sample);
       if (feedback === 'nick' || !event) event = feedback;
-    } else if (diffuserContact(specimen, sample, TUNING.contactStep)) {
-      event = 'wet';
+    } else {
+      gesture.diffusing = diffuserContact(specimen, sample, TUNING.contactStep);
+      if (gesture.diffusing) event = 'wet';
     }
     nextContact += TUNING.contactStep;
   }

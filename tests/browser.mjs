@@ -19,21 +19,47 @@ async function boardPoint(page, { x, y }) {
   return { x: board.x + x / BOARD.width * board.width, y: board.y + y / BOARD.height * board.height };
 }
 
-async function selectTool(page, name) {
+async function selectTool(page, name, input = 'mouse') {
   const button = page.getByRole('button', { name, exact: true });
-  await button.click();
+  if (input === 'touch') {
+    await button.tap();
+    await page.locator(`[data-tool="${name.toLowerCase()}"][aria-pressed="true"]`).waitFor({ timeout: 1500 });
+  } else {
+    await button.click();
+  }
   assert.equal(await button.getAttribute('aria-pressed'), 'true');
 }
 
-async function trace(page, from, to, steps = 24) {
-  const start = await boardPoint(page, seamPoint(from));
+async function trace(page, from, to, sampleAt = seamPoint) {
+  const start = await boardPoint(page, sampleAt(from));
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
+  const steps = 24;
   for (let index = 1; index <= steps; index++) {
-    const cursor = await boardPoint(page, seamPoint(from + (to - from) * index / steps));
+    const cursor = await boardPoint(page, sampleAt(from + (to - from) * index / steps));
     await page.mouse.move(cursor.x, cursor.y);
   }
   await page.mouse.up();
+}
+
+function pinkSurface(t) {
+  const { x, y } = seamPoint(t);
+  return { x: x - 7, y: y + 20 };
+}
+
+async function expectCleanLobe(page) {
+  // The detached curl should leave the work surface after the release animation.
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('#specimen');
+    const frame = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 0; index < frame.length; index += 4) {
+      const red = frame[index];
+      const green = frame[index + 1];
+      const blue = frame[index + 2];
+      if (red > 140 && red - green > 36 && Math.abs(green - blue) < 13) return false;
+    }
+    return true;
+  }, undefined, { timeout: 2000 });
 }
 
 function handle(index = 0) {
@@ -89,18 +115,21 @@ try {
 
   await trace(page, 0.34, 0.68);
   await selectTool(page, 'Diffuser');
-  await trace(page, 0.37, 0.67);
+  await trace(page, 0.36, 0.68, pinkSurface);
+  assert.match(await page.locator('#bench-note').textContent(), /fold is wet/);
+  await screenshot(page, 'desktop-wet');
   await selectTool(page, 'Grip');
   await startPeel(page, 57);
   await screenshot(page, 'desktop-caught');
-  assert.match(await page.getByRole('status').textContent(), /shines/);
+  assert.match(await page.getByRole('status').textContent(), /caught on the husk/);
   await page.mouse.up();
   await selectTool(page, 'Blade');
-  await trace(page, 0.64, 0.99);
+  await trace(page, 0.63, 0.91);
   await selectTool(page, 'Grip');
-  await startPeel(page, 85);
+  await startPeel(page, 45);
   await page.mouse.up();
-  assert.match(await page.locator('#bench-note').textContent(), /came free/);
+  assert.match(await page.locator('#bench-note').textContent(), /membrane is free/);
+  await expectCleanLobe(page);
   await screenshot(page, 'desktop-clean-peel');
 
   await page.setViewportSize({ width: 320, height: 640 });
@@ -127,7 +156,7 @@ try {
   await send('touchMove', [{ ...safePull, id: 1 }, { ...second, id: 2 }]);
   await screenshot(touch, 'touch-caught');
   await send('touchCancel', []);
-  assert.match(await touch.getByRole('status').textContent(), /Starter slit restored/);
+  assert.match(await touch.getByRole('status').textContent(), /caught on the husk/);
 
   await send('touchStart', [{ ...first, id: 3 }]);
   await send('touchMove', [{ ...forcedPull, id: 3 }]);
@@ -152,12 +181,31 @@ try {
   await selectTool(touch, 'Diffuser');
   await trace(touch, 0.34, 0.69);
   await selectTool(touch, 'Grip');
-  await startPeel(touch, 86, 1);
+  await startPeel(touch, 45, 1);
   await touch.mouse.up();
   assert.match(await touch.locator('#bench-note').textContent(), /remnant remains/);
   await screenshot(touch, 'touch-exposed-with-remnant');
   await touch.getByRole('button', { name: 'Reset node' }).click();
   assert.match(await touch.getByRole('status').textContent(), /Starter slit restored/);
+
+  // Complete the starter node with touch input for each tool.
+  async function swipe(positions) {
+    const samples = await Promise.all(positions.map((position) => boardPoint(touch, position)));
+    await send('touchStart', [samples[0]]);
+    for (const sample of samples.slice(1)) await send('touchMove', [sample]);
+    await send('touchEnd', []);
+  }
+  await selectTool(touch, 'Blade', 'touch');
+  await swipe([0.62, 0.69, 0.76, 0.83, 0.9].map(seamPoint));
+  await selectTool(touch, 'Diffuser', 'touch');
+  await swipe([0.36, 0.43, 0.5, 0.57, 0.64, 0.69].map(pinkSurface));
+  assert.match(await touch.getByRole('status').textContent(), /fold is wet/);
+  await selectTool(touch, 'Grip', 'touch');
+  const start = handle();
+  await swipe([start, { x: start.x - 26, y: start.y - 8 }, { x: start.x - 45, y: start.y - 12 }]);
+  assert.match(await touch.getByRole('status').textContent(), /membrane is free/);
+  await expectCleanLobe(touch);
+  await screenshot(touch, 'touch-clean-peel');
   assert.deepEqual(touchErrors, []);
   console.log(`Passed desktop pointer, 320px layout, mobile touch and two-finger interruption in Chromium ${browser.version()}.`);
 } finally {
