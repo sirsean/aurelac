@@ -284,15 +284,17 @@ function selectTool(next) {
     : toolHints[harvest.stage][tool];
 }
 
-for (const button of tools) {
-  button.addEventListener('click', () => selectTool(button.dataset.tool));
+function onBenchPress(button, press) {
+  button.addEventListener('click', press);
   button.addEventListener('pointerup', (event) => {
     // Chromium can suppress the synthetic click when a tap follows a quick swipe.
-    if (event.pointerType !== 'touch') return;
+    if (event.pointerType !== 'touch' || !event.isPrimary || button.disabled) return;
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (button.contains(target)) selectTool(button.dataset.tool);
+    if (button.contains(target)) press();
   });
 }
+
+for (const button of tools) onBenchPress(button, () => selectTool(button.dataset.tool));
 
 document.querySelector('#reset').addEventListener('click', reset);
 lightButton.addEventListener('click', () => {
@@ -303,7 +305,7 @@ lightButton.addEventListener('click', () => {
   updateTool();
   requestRender();
 });
-closeButton.addEventListener('click', () => {
+onBenchPress(closeButton, () => {
   const appraisal = storeHarvest(harvest);
   if (!appraisal) return;
   finishGesture();
