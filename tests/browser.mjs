@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { ATTACHMENTS, BOARD, TUNING, seamPoint } from '../src/geometry.js';
-import { BLISTER_TIMING, CASE_CENTER, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
+import { CASE_CENTER, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
+import { COMMON_NODE, NODES, nodeCode } from '../src/nodes.js';
 import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
 
 const baseUrl = process.env.AURELAC_TEST_URL ?? 'http://127.0.0.1:3000';
@@ -168,10 +169,10 @@ async function drag(page, start, end, steps = 9) {
   await page.mouse.up();
 }
 
-async function settled(page, opened, index) {
+async function settled(page, opened, index, timing = COMMON_NODE.timing) {
   await page.waitForFunction(({ opened, index, cycle, slack, stagger }) =>
     (performance.now() - opened + stagger * index) % cycle < slack * 0.42,
-  { opened, index, ...BLISTER_TIMING }, { timeout: BLISTER_TIMING.cycle + 1300 });
+  { opened, index, ...timing }, { timeout: timing.cycle + 1300 });
 }
 
 function tissuePoint(blister, travel) {
@@ -419,6 +420,16 @@ try {
   assert.equal(await touch.locator('#appraisal-outcome').textContent(), 'Ruined');
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);
+  const canvases = [];
+  for (const node of NODES) {
+    await touch.getByLabel('Start a specimen').selectOption(String(node.seed));
+    await expectIntact(touch);
+    assert.equal(await touch.locator('#node-id').textContent(), nodeCode(node.seed));
+    await touch.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    canvases.push(await touch.locator('#specimen').evaluate((canvas) => canvas.toDataURL()));
+    await screenshot(touch, `touch-specimen-${node.seed}`);
+  }
+  assert.equal(new Set(canvases).size, NODES.length);
   assert.deepEqual(touchErrors, []);
   console.log(`Passed angled cuts, blister drags, Fazer splash and wipe, and pristine, flawed, and ruined outcomes in Chromium ${browser.version()}.`);
 } finally {

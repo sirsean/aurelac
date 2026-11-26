@@ -2,8 +2,7 @@ import {
   ATTACHMENTS, LOBE_WIDTH, SEAM, TUNING,
   between, clamp, closestSeam, distance, mix, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
-
-export const COMMON_NODE = { seed: 107, name: 'Common node', origin: 'Bakhroma Green' };
+import { COMMON_NODE } from './nodes.js';
 
 export function createSpecimen({ seed = COMMON_NODE.seed } = {}) {
   return {

@@ -4,6 +4,7 @@ import {
   beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean, storeHarvest,
 } from './harvest.js';
 import { beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
+import { COMMON_NODE, nodeCode, nodeFor } from './nodes.js';
 import { createRenderer } from './render.js';
 
 const params = new URLSearchParams(location.search);
@@ -22,6 +23,8 @@ const pearlActions = document.querySelector('#pearl-actions');
 const lightButton = document.querySelector('#work-light');
 const closeButton = document.querySelector('#close-case');
 const appraisalPanel = document.querySelector('#appraisal');
+const nodeSelect = document.querySelector('#node-select');
+const nodeId = document.querySelector('#node-id');
 const renderer = createRenderer(canvas, {
   debug,
   reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -149,10 +152,13 @@ function finishGesture() {
   requestRender();
 }
 
-function reset() {
+function startNode(seed) {
   finishGesture();
-  specimen = createSpecimen();
-  harvest = createHarvest();
+  const node = nodeFor(seed);
+  specimen = createSpecimen({ seed: node.seed });
+  harvest = createHarvest(node.seed);
+  nodeSelect.value = String(node.seed);
+  nodeId.textContent = nodeCode(node.seed);
   tool = 'blade';
   feedback.textContent = 'The specimen is intact.';
   note.textContent = toolHints[harvest.stage][tool];
@@ -294,7 +300,8 @@ for (const button of tools) {
   });
 }
 
-document.querySelector('#reset').addEventListener('click', reset);
+nodeSelect.addEventListener('change', () => startNode(Number(nodeSelect.value)));
+document.querySelector('#reset').addEventListener('click', () => startNode(specimen.seed));
 lightButton.addEventListener('click', () => {
   harvest.light = !harvest.light;
   if (harvest.light && !pearlIsClean(harvest)) {
@@ -309,7 +316,7 @@ closeButton.addEventListener('click', () => {
   finishGesture();
   harvest.light = true;
   document.querySelector('#appraisal-outcome').textContent = appraisal.outcome;
-  document.querySelector('#appraisal-size').textContent = appraisal.size;
+  document.querySelector('#appraisal-size').textContent = `${appraisal.size} · ${appraisal.diameter} mm`;
   document.querySelector('#appraisal-amber').textContent = `${appraisal.amberDepth} / 100`;
   document.querySelector('#appraisal-clarity').textContent = `${appraisal.clarity} / 100`;
   document.querySelector('#appraisal-observation').textContent = appraisal.observation;
@@ -332,4 +339,4 @@ new ResizeObserver(([entry]) => {
   requestRender();
 }).observe(canvas);
 
-reset();
+startNode(COMMON_NODE.seed);

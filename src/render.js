@@ -3,6 +3,7 @@ import {
 } from './geometry.js';
 import { createLiquidSplash } from './liquid-splash.js';
 import { drawBlisters, drawLiftedBlisters, drawPearlBench } from './harvest-render.js';
+import { nodeFor } from './nodes.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
 
 const shell = new Path2D(
@@ -44,7 +45,6 @@ const lobeArt = [
 
 const ink = '#352e27';
 const materials = {
-  shell: ['#d9c5a9', '#bb9e80', '#8b6952'],
   flesh: ['#d99258', '#b66b42', '#704333'],
   membrane: ['#e4a196', '#bb786d', '#844c48'],
 };
@@ -100,6 +100,10 @@ function createShellLayer(seed) {
   ctx.scale(scale, scale);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  const appearance = nodeFor(seed).shell;
+  ctx.translate(197, 203);
+  ctx.scale(appearance.width, appearance.height);
+  ctx.translate(-197, -203);
 
   ctx.save();
   ctx.translate(0, 8);
@@ -107,7 +111,7 @@ function createShellLayer(seed) {
   fill(ctx, shell, '#2929216b');
   ctx.restore();
 
-  fill(ctx, tether, radial(ctx, 319, 51, 85, materials.shell));
+  fill(ctx, tether, radial(ctx, 319, 51, 85, appearance.colors));
   line(ctx, tether, ink, 2.2);
   for (const wrinkle of [
     'M316 73Q325 75 325 82', 'M326 57Q334 56 340 61', 'M325 40Q334 35 344 39',
@@ -116,7 +120,7 @@ function createShellLayer(seed) {
     line(ctx, new Path2D(wrinkle), '#624b3b', 1.1);
   }
 
-  fill(ctx, shell, radial(ctx, 142, 124, 220, materials.shell));
+  fill(ctx, shell, radial(ctx, 142, 124, 220, appearance.colors));
   ctx.save();
   ctx.clip(shell);
   const shade = ctx.createLinearGradient(62, 93, 323, 321);

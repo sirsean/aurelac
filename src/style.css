@@ -117,6 +117,17 @@ h2 { font-size: 2rem; }
   font-size: .77rem;
   letter-spacing: .06em;
 }
+#node-select {
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  min-height: 44px;
+  padding: 0 22px 0 0;
+  border: 0;
+  background: linear-gradient(45deg, transparent 48%, #d3c4a0 50%, #d3c4a0 67%, transparent 69%) right 7px center / 6px 7px no-repeat,
+    linear-gradient(135deg, transparent 48%, #d3c4a0 50%, #d3c4a0 67%, transparent 69%) right 3px center / 6px 7px no-repeat;
+}
+#node-select option { background: #343c30; }
 #specimen {
   display: block;
   width: 100%;

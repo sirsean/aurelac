@@ -2,19 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { point } from '../src/geometry.js';
 import {
-  BLISTER_TIMING, CASE_CENTER, COMMON_PEARL, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
+  CASE_CENTER, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
   createHarvest, dragClearsOpening, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean,
   readyToLift, storeHarvest,
 } from '../src/harvest.js';
+import { COMMON_NODE, NODES } from '../src/nodes.js';
 import { createSpecimen } from '../src/specimen.js';
 
 const openedAt = 200;
+const COMMON_PEARL = COMMON_NODE.pearl;
 
-function bench() {
-  const specimen = createSpecimen();
+function bench(seed = COMMON_NODE.seed) {
+  const specimen = createSpecimen({ seed });
   specimen.cut.fill(true, 12, 56);
   specimen.attachments.forEach((attachment) => { attachment.state = 'released'; });
-  const harvest = createHarvest();
+  const harvest = createHarvest(seed);
   openBlisters(harvest, specimen, openedAt);
   return harvest;
 }
@@ -27,7 +29,7 @@ function stroke(harvest, tool, start, end, time = openedAt + 100) {
 }
 
 function relaxedTime(blister, cycles = 1) {
-  return openedAt + BLISTER_TIMING.cycle * cycles - BLISTER_TIMING.stagger * blister.index + 140;
+  return openedAt + blister.timing.cycle * cycles - blister.timing.stagger * blister.index + 140;
 }
 
 function liftBlister(harvest, blister) {
@@ -48,20 +50,22 @@ function freeBlister(harvest, blister) {
   return liftBlister(harvest, blister);
 }
 
-function pearlPoint(x, y) {
-  return point(PEARL_CENTER.x + x, PEARL_CENTER.y + y);
+function pearlPoint(x, y, scale = 1) {
+  return point(PEARL_CENTER.x + x * scale, PEARL_CENTER.y + y * scale);
 }
 
 function wipeRow(harvest, y) {
-  return stroke(harvest, 'wipe', pearlPoint(-24, y), pearlPoint(24, y));
+  const { scale } = harvest.pearl;
+  return stroke(harvest, 'wipe', pearlPoint(-24, y, scale), pearlPoint(24, y, scale));
 }
 
 function cleanPearl(harvest) {
+  const { scale } = harvest.pearl;
   assert.equal(wipeRow(harvest, 0).event, 'coating-sticky');
   assert.ok(harvest.pearl.coating.every(({ amount }) => amount === 1));
 
-  const first = beginHarvestGesture(harvest, 'fazer', pearlPoint(-15, -16));
-  assert.deepEqual(first.sprayContact, pearlPoint(-15, -16));
+  const first = beginHarvestGesture(harvest, 'fazer', pearlPoint(-15, -16, scale));
+  assert.deepEqual(first.sprayContact, pearlPoint(-15, -16, scale));
   assert.ok(harvest.pearl.coating.some(({ treated }) => treated));
   assert.ok(harvest.pearl.coating.some(({ treated }) => !treated));
 
@@ -69,7 +73,7 @@ function cleanPearl(harvest) {
   assert.ok(harvest.pearl.coating.some(({ amount }) => amount < 1));
   assert.equal(pearlIsClean(harvest), false);
 
-  for (const y of [-18, 0, 20]) stroke(harvest, 'fazer', pearlPoint(-21, y), pearlPoint(21, y));
+  for (const y of [-18, 0, 20]) stroke(harvest, 'fazer', pearlPoint(-21, y, scale), pearlPoint(21, y, scale));
   assert.ok(harvest.pearl.coating.every(({ treated }) => treated));
   assert.equal(pearlIsClean(harvest), false);
   for (let pass = 0; pass < 3 && !pearlIsClean(harvest); pass++) {
@@ -98,6 +102,25 @@ test('five blisters have different fold angles and the first cut can pause and r
     relaxedTime(first)).event, 'blister-cut');
 });
 
+test('all three nodes have workable blisters and retain independent pearl and timing properties', () => {
+  for (const node of NODES) {
+    const harvest = bench(node.seed);
+    const first = harvest.blisters[0];
+    assert.equal(first.timing.slack, node.timing.slack);
+    assert.equal(blisterPose(first, openedAt + node.timing.slack - 1).settled, true);
+    assert.equal(blisterPose(first, openedAt + node.timing.slack + 1).settled, false);
+    for (const blister of harvest.blisters) freeBlister(harvest, blister);
+    cleanPearl(harvest);
+    assert.equal(place(harvest, PEARL_CENTER, CASE_CENTER), 'seated');
+    const appraisal = storeHarvest(harvest);
+    assert.equal(appraisal.outcome, 'Pristine');
+    assert.equal(appraisal.diameter, node.pearl.diameter);
+    assert.equal(appraisal.amberDepth, node.pearl.amberDepth);
+    assert.equal(appraisal.clarity, node.pearl.clarity);
+  }
+  assert.equal(new Set(NODES.map(({ pearl }) => pearl.diameter)).size, 3);
+  assert.ok(NODES.at(-1).timing.slack < COMMON_NODE.timing.slack);
+});
 test('a freed blister follows Grip and is removed only on release outside the opening', () => {
   const harvest = bench();
   const first = harvest.blisters[0];

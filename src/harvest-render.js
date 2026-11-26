@@ -54,8 +54,11 @@ function drawBlister(ctx, blister, time, reducedMotion, detached = false) {
     const end = blisterFold(blister, (index + 1) / cut.length);
     if (!settled && !cut[index]) continue;
     span(ctx, start, end, '#412a26', cut[index] ? 4.1 : 1.7);
+    const previousAlpha = ctx.globalAlpha;
+    if (!cut[index]) ctx.globalAlpha *= blister.foldContrast;
     span(ctx, point(start.x + axis.y * 1.8, start.y - axis.x * 1.8),
       point(end.x + axis.y * 1.8, end.y - axis.x * 1.8), cut[index] ? '#efbc85' : '#f7dbac', 1.3);
+    ctx.globalAlpha = previousAlpha;
   }
   if (acid >= 10) {
     oval(ctx, center.x + 2, center.y + 3, 7, 11,
@@ -109,7 +112,7 @@ export function drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion) {
   }
 }
 
-function drawCase(ctx, closed) {
+function drawCase(ctx, closed, scale) {
   const { x, y } = CASE_CENTER;
   ctx.save();
   ctx.translate(x, y);
@@ -129,11 +132,12 @@ function drawCase(ctx, closed) {
   ctx.fill(inset);
   stroke(ctx, inset, '#9a9b7a', 1.2);
   if (!closed) {
-    oval(ctx, 0, 0, 32, 32, gradient(ctx, -3, -10, 55, [
+    const recess = Math.max(27, 32 * scale);
+    oval(ctx, 0, 0, recess, recess, gradient(ctx, -3, -10, 55, [
       [0, '#242b25'], [0.6, '#323c31'], [1, '#82906d'],
     ]));
     const rim = new Path2D();
-    rim.arc(0, 0, 34, 0, circle);
+    rim.arc(0, 0, recess + 2, 0, circle);
     stroke(ctx, rim, '#a6a585ad', 2);
   }
   span(ctx, point(-8, 48), point(8, 48), '#b6a882', 3);
@@ -164,6 +168,7 @@ function drawCoating(ctx, coating) {
 }
 
 function drawPearl(ctx, harvest, position, scale = 1) {
+  scale *= harvest.pearl.scale;
   if (scale <= 0.02) return;
   const { rotation, coating } = harvest.pearl;
   const { light, damage } = harvest;
@@ -174,8 +179,10 @@ function drawPearl(ctx, harvest, position, scale = 1) {
   ctx.translate(x, y);
   ctx.scale(scale, scale);
   ctx.rotate(rotation);
+  const amber = harvest.intrinsic.amberDepth;
+  const litAmber = amber >= 85 ? '#b67c4d' : amber < 70 ? '#84634d' : '#986344';
   ctx.fillStyle = gradient(ctx, -8, -12, 49, [
-    [0, light ? '#986344' : '#655044'], [0.42, '#42302c'], [0.76, '#201c1b'], [1, '#110f12'],
+    [0, light ? litAmber : '#655044'], [0.42, '#42302c'], [0.76, '#201c1b'], [1, '#110f12'],
   ]);
   ctx.fill(pearl);
   stroke(ctx, pearl, '#211816', 2.3);
@@ -233,7 +240,7 @@ export function drawPearlBench(ctx, harvest, gesture, time, reducedMotion) {
       gradient(ctx, PEARL_CENTER.x, PEARL_CENTER.y, 110, [[0, '#fff0b666'], [1, '#ffebaa00']]));
   }
 
-  drawCase(ctx, harvest.stage === 'stored');
+  drawCase(ctx, harvest.stage === 'stored', harvest.pearl.scale);
   if (harvest.rupture) return drawRupture(ctx, harvest, time, reducedMotion);
   const location = harvest.stage === 'stored'
     ? PEARL_CENTER

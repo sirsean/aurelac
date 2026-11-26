@@ -32,8 +32,13 @@
       </div>
       <section class="instrument" aria-label="Aurelac workbench">
         <div class="specimen-tag">
-          <span>Common node</span>
-          <span class="node-id">BG–107</span>
+          <label class="visually-hidden" for="node-select">Start a specimen</label>
+          <select id="node-select">
+            <option value="107">Broad common node</option>
+            <option value="154">Small common node</option>
+            <option value="391">Rare node</option>
+          </select>
+          <span class="node-id" id="node-id">BG–107</span>
         </div>
         <canvas id="specimen" width="800" height="748" aria-label="Overhead view of a tethered Aurelac node"></canvas>
         <div class="tool-tray" role="group" aria-label="Harvest tools">
