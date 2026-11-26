@@ -8,6 +8,7 @@ import { COMMON_NODE, nodeCode, nodeFor } from './nodes.js';
 import { beginSharpening, bladeDrag, createBlade, sharpenBlade } from './blade.js';
 import { collectedPearls, loadWorkbench, recordPearl, saveWorkbench } from './save.js';
 import { createRenderer } from './render.js';
+import { createFeedback } from './feedback.js';
 
 const params = new URLSearchParams(location.search);
 const playtest = ['starter', 'intact'].includes(params.get('playtest'));
@@ -33,6 +34,8 @@ const renderer = createRenderer(canvas, {
   debug,
   reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
 });
+const settings = { sound: false, haptics: false };
+const effects = createFeedback(settings);
 
 let specimen = createSpecimen();
 let harvest = createHarvest();
@@ -47,6 +50,13 @@ let dryingTimer = null;
 let storage = null;
 try { storage = window.localStorage; } catch { /* The bench also runs without browser storage. */ }
 const pearls = new Map();
+
+const materialCues = {
+  cut: 'cut', 'blade-drag': 'drag', nick: 'tear', wet: 'spray',
+  peeled: 'release', piece: 'release', tear: 'tear', 'dry-tear': 'tear', 'reverse-tear': 'tear',
+  'cut-part': 'cut', 'blister-cut': 'cut', 'acid-nick': 'tear', rupture: 'rupture',
+  'blister-lifted': 'release', 'pearl-revealed': 'release', seated: 'case', rim: 'case',
+};
 
 const messages = {
   cut: 'Pink tissue is exposed. Sweep it with the diffuser.',
@@ -159,7 +169,7 @@ function updateTool() {
 
 function persist() {
   if (!runId) return;
-  saveWorkbench(storage, { id: runId, specimen, harvest, blade }, performance.now());
+  saveWorkbench(storage, { id: runId, specimen, harvest, blade, settings }, performance.now());
 }
 
 function finishGesture() {
@@ -202,6 +212,7 @@ function toBoard(event, rect) {
 
 canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
+  effects.activate();
   const location = toBoard(event, canvas.getBoundingClientRect());
   if (primary === null) {
     const next = tool === 'stone'
@@ -244,25 +255,36 @@ canvas.addEventListener('pointermove', (event) => {
     if (event && (event !== 'swollen' || !result)) result = event;
   }
   if (gesture.tool === 'stone') {
+    if (result) effects.play('stone');
     if (result === 'sharp') report(messages.sharp);
   } else if (membrane) {
     reportInteraction(result, event.timeStamp);
   } else if (result === 'fazer') {
     sprayFazer(event.timeStamp);
   } else if (result) {
-    report(messages[result]);
-    updateTool();
+    reportHarvestInteraction(result);
   }
   requestRender();
 });
 
 function sprayFazer(time) {
+  effects.play('spray');
   renderer.splash(gesture.sprayContact, time, 'fazer');
   report(messages.fazer);
 }
 
+function reportHarvestInteraction(result) {
+  if (materialCues[result]) effects.play(materialCues[result]);
+  report(messages[result]);
+  updateTool();
+}
+
 function reportInteraction(result, time) {
   const pull = gesture.pull;
+  const caught = !gesture.finished && pull?.catch && pull.load >= 0.14;
+  if (materialCues[result]) effects.play(materialCues[result]);
+  else if (caught && !gesture.caught) effects.play('drag');
+  gesture.caught = Boolean(caught);
   if (result === 'peeled' || result === 'piece') {
     renderer.detach(pull);
     const damaged = result === 'peeled' && specimen.attachments.some(({ state }) => state === 'torn');
@@ -270,7 +292,7 @@ function reportInteraction(result, time) {
   } else if (result === 'tear' || result === 'dry-tear' || result === 'reverse-tear') {
     renderer.detach(pull, true);
     report(exposed(specimen) ? 'The last section tears. The carrom lobe is exposed with ragged remnants.' : messages[result]);
-  } else if (!gesture.finished && pull?.catch && pull.load >= 0.14) {
+  } else if (caught) {
     report(messages[pull.catch]);
   } else if (result === 'wet') {
     renderer.splash(gesture.wetContact, time);
@@ -287,11 +309,9 @@ function reportInteraction(result, time) {
 function endPointer(event) {
   if (event.pointerId === primary) {
     if (event.type === 'pointerup') {
+      effects.activate();
       const result = finishHarvestGesture(harvest, gesture);
-      if (result) {
-        report(messages[result]);
-        updateTool();
-      }
+      if (result) reportHarvestInteraction(result);
     }
     finishGesture();
   } else if (event.pointerId === anchor) {
@@ -313,6 +333,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function selectTool(next) {
+  effects.activate();
   if (next === tool || !Object.hasOwn(toolHints[harvest.stage], next)) return;
   finishGesture();
   tool = next;
@@ -403,6 +424,7 @@ new ResizeObserver(([entry]) => {
 const saved = loadWorkbench(storage, performance.now());
 if (saved) {
   ({ id: runId, specimen, harvest, blade } = saved);
+  Object.assign(settings, saved.settings);
   updateTool();
   if (harvest.appraisal) showAppraisal(harvest.appraisal);
   else report(specimen.cut.some(Boolean) ? 'Harvest resumed.' : 'The specimen is intact.');
@@ -410,3 +432,14 @@ if (saved) {
 } else {
   startNode(COMMON_NODE.seed);
 }
+
+for (const name of ['sound', 'haptics']) {
+  const input = document.querySelector(`#${name}`);
+  input.checked = settings[name];
+  input.addEventListener('change', () => {
+    settings[name] = input.checked;
+    if (name === 'sound') effects.activate();
+    persist();
+  });
+}
+document.querySelector('#haptics-option').hidden = !navigator.vibrate;

@@ -205,9 +205,10 @@ function drawPearl(ctx, harvest, position, scale = 1) {
   drawCoating(ctx, coating);
   ctx.restore();
   ctx.rotate(-rotation);
-  ctx.globalAlpha = pearlIsClean(harvest) ? 1 : 0.24;
-  oval(ctx, -10, -16, light ? 10 : 5.5, light ? 3.8 : 2.1, '#f8e0bfdf', -0.5);
-  oval(ctx, 2, -19, 2.0, 1.2, '#f5e2d3aa', -0.4);
+  const glint = Math.sin(rotation);
+  ctx.globalAlpha = pearlIsClean(harvest) ? 0.85 + 0.15 * glint : 0.24;
+  oval(ctx, -10 + 4 * glint, -16, light ? 10 : 5.5, light ? 3.8 : 2.1, '#f8e0bfdf', -0.5 + glint * 0.15);
+  oval(ctx, 2 + 3 * glint, -19, 2.0, 1.2, '#f5e2d3aa', -0.4);
   ctx.restore();
 }
 

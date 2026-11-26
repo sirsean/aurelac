@@ -1,5 +1,5 @@
 import {
-  ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
+  ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, closestSeam, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
 import { createLiquidSplash } from './liquid-splash.js';
 import { drawBlisters, drawLiftedBlisters, drawPearlBench } from './harvest-render.js';
@@ -437,11 +437,12 @@ function drawDetachedFlap(ctx, { tip, direction, torn }, progress) {
     ? 'M12-8C28-15 38-3 30 5C26 9 21 11 18 10'
     : 'M-13 20C-7 2 9-11 27-7C35-5 35 5 28 7C15 10 11 0 3 8');
   ctx.save();
-  ctx.translate(tip.x + direction.x * 74 * progress, tip.y + direction.y * 74 * progress);
+  const travel = 1 - (1 - progress) ** 3;
+  ctx.translate(tip.x + direction.x * 74 * travel, tip.y + direction.y * 74 * travel);
   ctx.scale(Math.sign(direction.x) || 1, 1);
-  ctx.rotate((torn ? -1.5 : 0.8) * progress);
-  ctx.scale(1 - 0.34 * progress, 1 - 0.34 * progress);
-  ctx.globalAlpha = 1 - progress;
+  ctx.rotate((torn ? -1.5 : 0.8) * travel);
+  ctx.scale(1 - 0.48 * travel, 1 - 0.25 * travel);
+  ctx.globalAlpha = 1 - clamp((progress - 0.12) / 0.88);
   fill(ctx, curl, radial(ctx, 13, 2, 36, materials.membrane));
   line(ctx, curl, '#623e36', 1.5);
   line(ctx, edge, '#ffe0c9c0', 1.5);
@@ -537,10 +538,13 @@ function drawContact(ctx, gesture) {
   ctx.fillStyle = depression;
   ctx.fillRect(x - 21, y - 21, 42, 42);
   if (gesture.bunch) {
+    const { normal } = closestSeam(gesture.contact).sample;
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(-normal.x, normal.y));
     for (let index = 0; index < 3; index++) {
       const bend = new Path2D();
-      bend.moveTo(x + index * 5 - 5, y - 14);
-      bend.quadraticCurveTo(x + index * 5 - 13, y, x + index * 5 - 6, y + 12);
+      bend.moveTo(index * 5 - 5, -14);
+      bend.quadraticCurveTo(index * 5 - 13, 0, index * 5 - 6, 12);
       line(ctx, bend, '#674a41', 1.2 + gesture.bunch);
     }
   }

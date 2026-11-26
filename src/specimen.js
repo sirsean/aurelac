@@ -227,7 +227,7 @@ export function moveGesture(specimen, gesture, location, time = 0) {
   const travel = distance(start, location);
   if (travel === 0) return null;
   let nextContact = gesture.travelUntilContact;
-  gesture.bunch = gesture.tool === 'blade' && gesture.drag > 0 && nextContact > travel
+  gesture.bunch = gesture.tool === 'blade' && gesture.drag > 0 && nextContact > Math.max(travel, TUNING.contactStep)
     && closestSeam(location).gap < TUNING.bladeRadius ? gesture.drag : 0;
   let event = null;
   while (nextContact <= travel) {

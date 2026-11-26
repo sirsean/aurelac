@@ -57,7 +57,8 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   }
   if (harvest.rupture) harvest.rupture.at += shift;
   blade.wear = clamp(blade.wear);
-  return { id, specimen, harvest, blade };
+  const settings = { sound: saved.settings?.sound === true, haptics: saved.settings?.haptics === true };
+  return { id, specimen, harvest, blade, settings };
 }
 
 export function recordPearl(storage, id, seed, appraisal, wall = Date.now()) {

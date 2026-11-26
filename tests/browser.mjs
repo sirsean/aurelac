@@ -477,7 +477,36 @@ try {
   await trace(savedBench, 0.63, 0.92);
   await expectStatus(savedBench, 'Pink tissue is exposed');
   assert.deepEqual(saveErrors, []);
-  console.log(`Passed three silhouettes, pristine, flawed and ruined harvests, and reload, collection and sharpening checks in Chromium ${browser.version()}.`);
+
+  const feedbackBench = await browser.newPage({ viewport: { width: 375, height: 780 } });
+  await feedbackBench.addInitScript(() => {
+    window.feedbackCalls = { sound: 0, haptics: 0 };
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      window.feedbackCalls.sound++;
+      return Reflect.apply(start, this, args);
+    };
+    Object.defineProperty(navigator, 'vibrate', { value: () => { window.feedbackCalls.haptics++; } });
+  });
+  const feedbackErrors = await setUp(feedbackBench);
+  await trace(feedbackBench, 0.34, 0.68);
+  await expectStatus(feedbackBench, 'Pink tissue is exposed');
+  assert.deepEqual(await feedbackBench.evaluate(() => window.feedbackCalls), { sound: 0, haptics: 0 });
+  await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
+  for (const name of ['Sound', 'Haptics']) {
+    const option = feedbackBench.getByRole('checkbox', { name });
+    assert.equal(await option.isChecked(), false);
+    await option.check();
+  }
+  await feedbackBench.locator('#guide').getByRole('button', { name: 'Close' }).click();
+  await trace(feedbackBench, 0.63, 0.9);
+  await feedbackBench.waitForFunction(() => window.feedbackCalls.sound > 0 && window.feedbackCalls.haptics > 0);
+  await feedbackBench.reload();
+  await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
+  assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Sound' }).isChecked(), true);
+  assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Haptics' }).isChecked(), true);
+  assert.deepEqual(feedbackErrors, []);
+  console.log(`Passed three silhouettes, pristine, flawed and ruined harvests, reload, collection, sharpening and material feedback checks in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }
