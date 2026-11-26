@@ -55,12 +55,27 @@
             </svg>
             Grip
           </button>
+          <button type="button" class="tool" data-tool="fazer" aria-pressed="false" hidden>Fazer</button>
+          <button type="button" class="tool" data-tool="case" aria-pressed="false" hidden>Case</button>
+        </div>
+        <div class="pearl-actions" id="pearl-actions" hidden>
+          <button class="reset-button" id="work-light" type="button" aria-pressed="false">Work light</button>
+          <button class="reset-button" id="close-case" type="button" disabled>Close case</button>
         </div>
       </section>
       <div class="bench-foot">
         <p id="bench-note">Trace the dark crease with the blade.</p>
-        <span class="build-label">Cut &amp; peel prototype</span>
       </div>
+      <section id="appraisal" class="appraisal" aria-labelledby="appraisal-heading" hidden>
+        <h2 id="appraisal-heading">Root pearl appraisal</h2>
+        <p id="appraisal-outcome"></p>
+        <dl>
+          <div><dt>Size</dt><dd id="appraisal-size"></dd></div>
+          <div><dt>Amber depth</dt><dd id="appraisal-amber"></dd></div>
+          <div><dt>Clarity</dt><dd id="appraisal-clarity"></dd></div>
+        </dl>
+        <p id="appraisal-observation"></p>
+      </section>
       <p class="visually-hidden" role="status" id="feedback"></p>
     </main>
 
@@ -77,8 +92,10 @@
         <dt>Blade</dt><dd>Follow the husk’s dark crease. Extend the opening if the lip still holds the flap.</dd>
         <dt>Diffuser</dt><dd>Wet the exposed fold. The glaze fades as it dries, so refresh it if the tissue looks matte.</dd>
         <dt>Grip</dt><dd>Follow the raised curl and ease off if it bunches. Wet the next fold before you grip it. Extend the slit if the husk holds.</dd>
+        <dt>Carrom blisters</dt><dd>Wait for each blister to settle and expose its pale fold. Cut along that fold, then grip and lift the blister free. Acid from a nick will cloud the pearl.</dd>
+        <dt>Fazer and work light</dt><dd>Put a drop on the root pearl. Roll the pearl to spread the solution and turn on the light to check for haze.</dd>
+        <dt>Case</dt><dd>Lift the pearl into the padded recess. Seat it flat before closing the case.</dd>
       </dl>
-      <p class="guide-foot">This bench ends at the exposed carrom lobe.</p>
     </dialog>
 
     <script type="module" src="/src/main.js"></script>

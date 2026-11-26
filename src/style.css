@@ -134,6 +134,8 @@ h2 { font-size: 2rem; }
   padding: 10px;
   border-top: 1px solid #4c5241;
 }
+.instrument[data-stage="blisters"] .tool-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.instrument [hidden], .appraisal[hidden], .bench-foot[hidden] { display: none; }
 .tool {
   min-width: 0;
   min-height: 51px;
@@ -161,8 +163,37 @@ h2 { font-size: 2rem; }
 
 .bench-foot { margin-top: 11px; align-items: baseline; color: var(--muted); }
 .bench-foot p { margin: 0; font-size: .875rem; }
-.build-label { font-size: .77rem; white-space: nowrap; }
 .playtest .bench-foot, .playtest .guide-button { visibility: hidden; }
+
+.pearl-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 0 10px 10px;
+  color: #f1e8d5;
+}
+.pearl-actions button[aria-pressed="true"] { background: #3d6056; border-color: #a0beb0; }
+.pearl-actions button:disabled { opacity: .52; cursor: default; }
+.instrument[data-stage="ruined"] .pearl-actions { padding-top: 10px; }
+.appraisal {
+  margin: 15px 0;
+  padding: 15px;
+  border: 1px solid #aaa38c;
+  border-radius: 8px;
+  background: #f4ecdc;
+}
+.appraisal h2 { font: 1.55rem Georgia, serif; margin: 0; }
+.appraisal p { margin: 8px 0 0; }
+#appraisal-outcome { font-weight: 750; }
+.appraisal dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.appraisal dt { font-size: .875rem; color: var(--muted); }
+.appraisal dd { margin: 3px 0 0; font-weight: 680; }
 
 dialog {
   margin: auto;
@@ -179,7 +210,6 @@ dialog {
 dialog::backdrop { background: #1c221bb5; }
 dialog dt { font-weight: 740; }
 dialog dd { margin: 2px 0 13px; }
-.guide-foot { color: var(--muted); margin-bottom: 0; font-size: .875rem; }
 
 .visually-hidden {
   position: absolute;

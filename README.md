@@ -1,6 +1,6 @@
 # Aurelac
 
-A portrait harvesting game set on Bakhroma Green. Prospectors extract **root pearls** from beneath a tethered husk, a pink membrane, and orange carrom blisters. This build is the cut-and-peel prototype for common node BG–107. The playable sequence ends at the exposed carrom lobe.
+A portrait harvesting game set on Bakhroma Green. Prospectors extract **root pearls** from beneath a tethered husk, a pink membrane, and orange carrom blisters. The complete-harvest preview plays through one common node, BG–107, from the first incision to case appraisal.
 
 ## Run the bench
 
@@ -19,6 +19,7 @@ While the dev or preview server is running, use `npm run test:browser` to exerci
 
 - The incision lips and tools use the same tray coordinates, seam samples, ordered attachments, and tuning. [geometry.js](src/geometry.js)
 - Cut, wetness, peel, and tear are derived from input positions. Specimen data is independent of browser state and rendering. [specimen.js](src/specimen.js)
+- Blister timing, cuts, Fazer coverage, placement, and appraisal live in the harvest model. Its renderer shows the same fold geometry and rotates local damage with the pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js)
 - The renderer clips deeper tissue to the opening and animates recoil. Append `?debug=1` to see opening width, hit regions, and pull load. [render.js](src/render.js)
 - The browser controller handles tool selection, pointer capture, cancellation, resizing, and the field guide. It maps CSS pixels to the tray, even when a finger moves past the canvas. [main.js](src/main.js)
 
@@ -30,9 +31,10 @@ Authenticate Wrangler with access to Workers and Custom Domains on `sirsean.me`.
 
 - `main` uses `aurelac.sirsean.me`.
 - `peel-prototype` uses `peel-prototype.aurelac.sirsean.me`.
+- `complete-harvest` uses `complete-harvest.aurelac.sirsean.me`.
 - Other branches use the same preview scheme. Names that need normalization get a stable hash suffix so similarly named branches deploy independently.
 
-Cloudflare manages DNS and certificates for these exact Worker Custom Domains. The prototype uses the preview branch. Deployments are explicit.
+Cloudflare manages DNS and certificates for these exact Worker Custom Domains. Deployments are explicit.
 
 ## Prototype playtest
 
@@ -48,8 +50,12 @@ The diffuser splashes on the exposed membrane. The sheen weakens as the fold dri
 
 Model tests cover the closed start, one section per grip, timed drying and refreshing, and clean and torn pulls in both directions. Browser checks exercise the closed start and reset, the fade and dry tear, recovery after a wrong-way tear, and three clean sections with mouse and emulated touch.
 
-## After the prototype gate
+## Complete harvest
 
-Complete the harvest on the same seed before introducing rarity. Model intrinsic size, amber depth, and potential clarity independently of handling damage. Add carrom blisters that settle, local clouding from nicks, and a severe rupture that releases poison gas and visibly melts the pearl. Fazer should preserve surviving clarity. Appraise a pearl after inspection and storage. Confirm clean, flawed, and ruined paths before adding specimen variants.
+Cut each blister along its pale fold during the settled window, then lift it with Grip. Pausing a cut preserves the opening. Acid from a nick leaves a local haze that rotates with the pearl. A rupture releases poison gas and melts the pearl. Fazer spreads as the player rolls the pearl, and the work light reveals patches where the solution has not reached. Closing the case produces a size, amber depth, and clarity appraisal. Closing on the rim can chip the pearl.
 
-Then tune varied seeds, blade wear, sharpening, and a versioned local collection. Verify reload during a damaged harvest and idempotent storage. Tune replay and input feedback on real devices and with fresh and practiced players.
+Chromium 156 completed pristine, flawed, and ruined harvests on BG–107 with desktop mouse and emulated touch. The checks resumed a paused cut, treated a hazy patch before storage, and verified that blade, diffuser, and Grip still complete the closed-start peel.
+
+## Next milestones
+
+Introduce three curated specimens with independent size, intrinsic clarity, blister placement, and slack windows. Check whether players can read the rare specimen's shorter settled window on a phone. Then add blade wear, sharpening, and a versioned local collection that preserves damage across reloads and records each stored pearl once. Tune replay and input feedback with fresh and practiced players.

@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { ATTACHMENTS, BOARD, TUNING, seamPoint } from '../src/geometry.js';
+import { BLISTER_TIMING, CASE_CENTER, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
+import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
 
 const baseUrl = process.env.AURELAC_TEST_URL ?? 'http://127.0.0.1:3000';
 const executablePath = process.env.AURELAC_CHROMIUM
@@ -122,7 +124,7 @@ async function checkFit(page) {
   const tray = await page.locator('.tool-tray').boundingBox();
   assert.ok(tray.y + tray.height <= viewport.height);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), viewport.width);
-  for (const tool of await page.locator('[data-tool]').all()) {
+  for (const tool of await page.locator('[data-tool]:visible').all()) {
     const box = await tool.boundingBox();
     assert.ok(box.height >= 44 && box.width >= 44);
   }
@@ -142,6 +144,78 @@ async function expectIntact(page) {
 const finishedSection = (index) => index + TUNING.attachmentsPerSection === ATTACHMENTS.length
   ? 'membrane is free'
   : 'One section came free';
+
+function blistersFor(strokes) {
+  const specimen = createSpecimen();
+  for (const [from, to] of strokes) {
+    const gesture = beginGesture(specimen, 'blade', seamPoint(from));
+    for (let index = 1; index <= 24; index++) {
+      moveGesture(specimen, gesture, seamPoint(from + (to - from) * index / 24));
+    }
+  }
+  const harvest = createHarvest();
+  openBlisters(harvest, specimen, 0);
+  return harvest.blisters;
+}
+
+async function drag(page, start, end, steps = 9) {
+  const from = await boardPoint(page, start);
+  const to = await boardPoint(page, end);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps });
+  await page.mouse.up();
+}
+
+async function settled(page, opened, index) {
+  await page.waitForFunction(({ opened, index, cycle, slack, stagger }) =>
+    (performance.now() - opened + stagger * index) % cycle < slack * 0.42,
+  { opened, index, ...BLISTER_TIMING }, { timeout: BLISTER_TIMING.cycle + 1300 });
+}
+
+async function harvestPearl(page, strokes, opened, outcome) {
+  const blisters = blistersFor(strokes);
+  for (const blister of blisters) {
+    await selectTool(page, 'Blade');
+    if (outcome === 'Flawed' && blister.index === 1) {
+      const { x, y } = blister.center;
+      await drag(page, { x, y: y - 14 }, { x, y: y + 5 });
+      await expectStatus(page, 'Acid leaked');
+    }
+    await settled(page, opened, blister.index);
+    if (blister.index === 0) {
+      await drag(page, blisterFold(blister, 0), blisterFold(blister, 0.44));
+      await expectStatus(page, 'The cut holds');
+      await settled(page, opened, blister.index);
+    }
+    await drag(page, blisterFold(blister, 0), blisterFold(blister, 1));
+    await expectStatus(page, 'The fold is free');
+    await selectTool(page, 'Grip');
+    await drag(page, blister.center, { x: blister.center.x, y: blister.center.y - 36 });
+    await expectStatus(page, blister.index === 2 ? 'The root pearl is exposed' : 'The blister is free');
+  }
+
+  await selectTool(page, 'Fazer');
+  const center = await boardPoint(page, PEARL_CENTER);
+  await page.mouse.click(center.x, center.y);
+  await selectTool(page, 'Grip');
+  await drag(page, PEARL_CENTER, { x: PEARL_CENTER.x + 43, y: PEARL_CENTER.y });
+  await page.getByRole('button', { name: 'Work light' }).click();
+  await expectStatus(page, 'hazy patch');
+  await selectTool(page, 'Fazer');
+  await page.mouse.click(center.x, center.y);
+  await selectTool(page, 'Grip');
+  for (let turn = 0; turn < 3; turn++) {
+    await drag(page, PEARL_CENTER, { x: PEARL_CENTER.x + 77, y: PEARL_CENTER.y });
+  }
+  await expectStatus(page, 'spread across the surface');
+  await selectTool(page, 'Case');
+  await drag(page, PEARL_CENTER, CASE_CENTER);
+  await expectStatus(page, 'sits flat');
+  await page.getByRole('button', { name: 'Close case' }).click();
+  assert.equal(await page.locator('#appraisal-outcome').textContent(), outcome);
+  if (outcome === 'Flawed') assert.match(await page.locator('#appraisal-observation').textContent(), /Acid clouding/);
+}
 
 try {
   await mkdir('playtest-results', { recursive: true });
@@ -186,8 +260,11 @@ try {
     await expectStatus(page, finishedSection(index));
     await page.mouse.up();
   }
+  const desktopOpening = await page.evaluate(() => performance.now());
   await expectCleanLobe(page);
   await screenshot(page, 'desktop-clean-peel');
+  await harvestPearl(page, [[0.34, 0.68], [0.63, 0.91]], desktopOpening, 'Pristine');
+  await screenshot(page, 'desktop-pristine');
 
   await page.setViewportSize({ width: 320, height: 640 });
   await page.getByRole('button', { name: 'Reset node' }).click();
@@ -223,7 +300,10 @@ try {
   await startPeel(page, 53, middle * 2);
   await expectStatus(page, 'Ragged remnants remain');
   await page.mouse.up();
+  const narrowOpening = await page.evaluate(() => performance.now());
   await screenshot(page, 'narrow-recovered-peel');
+  await harvestPearl(page, [[0.2, 0.84]], narrowOpening, 'Flawed');
+  await screenshot(page, 'narrow-flawed');
   assert.deepEqual(desktopErrors, []);
 
   const touch = await browser.newPage({
@@ -284,10 +364,20 @@ try {
   }
   await expectCleanLobe(touch);
   await screenshot(touch, 'touch-clean-peel');
+  const { center } = blistersFor([[0.34, 0.68], [0.63, 0.91]])[1];
+  await selectTool(touch, 'Blade', 'touch');
+  await swipe([
+    { x: center.x, y: center.y - 13 },
+    { x: center.x, y: center.y + 13 },
+    { x: center.x, y: center.y - 13 },
+  ], 'Poison gas dissolves');
+  await screenshot(touch, 'touch-ruined');
+  await touch.getByRole('button', { name: 'Record loss' }).click();
+  assert.equal(await touch.locator('#appraisal-outcome').textContent(), 'Ruined');
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);
   assert.deepEqual(touchErrors, []);
-  console.log(`Passed left and right peels, wrong-way recovery and tears, drying, and interrupted touch in Chromium ${browser.version()}.`);
+  console.log(`Passed peel regressions and pristine, flawed, and ruined harvests in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }

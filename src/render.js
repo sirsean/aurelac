@@ -2,6 +2,7 @@ import {
   ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
 import { createDiffuserSplash } from './diffuser-splash.js';
+import { drawBlisters, drawPearlBench } from './harvest-render.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
 
 const shell = new Path2D(
@@ -492,11 +493,12 @@ function drawSeam(ctx, specimen, lobes) {
   return ranges;
 }
 
-function drawOpening(ctx, specimen, ranges, pose, gesture) {
+function drawOpening(ctx, specimen, ranges, pose, gesture, drawInterior) {
   for (const range of ranges) {
     const cavity = cavityPath(range);
     ctx.save();
     ctx.clip(cavity);
+    drawInterior?.();
     drawMembrane(ctx, specimen, pose);
     drawDamage(ctx, specimen);
     drawDiffuserContact(ctx, gesture);
@@ -566,7 +568,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   let release = null;
   let previousTime = null;
 
-  function draw(specimen, gesture, time) {
+  function draw(specimen, harvest, gesture, time) {
     if (seed !== specimen.seed) {
       seed = specimen.seed;
       body = createShellLayer(seed);
@@ -598,6 +600,10 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.drawImage(tray, 0, 0, BOARD.width, BOARD.height);
+    if (['pearl', 'ruined', 'stored'].includes(harvest.stage)) {
+      return drawPearlBench(ctx, harvest, gesture, time, reducedMotion);
+    }
+    const workingBlisters = harvest.stage === 'blisters';
     ctx.save();
     if (pose && !pose.pinned && !reducedMotion) {
       ctx.translate(clamp(pose.target.x - pose.anchor.x, -100, 100) * pose.load * 0.027,
@@ -605,9 +611,12 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     }
     ctx.drawImage(body, 0, 0, BOARD.width, BOARD.height);
     const ranges = drawSeam(ctx, specimen, lobes);
-    drawOpening(ctx, specimen, ranges, pose, gesture);
+    let pulsing = false;
+    drawOpening(ctx, specimen, ranges, pose, gesture, workingBlisters
+      ? () => { pulsing = drawBlisters(ctx, harvest, time, reducedMotion, debug); }
+      : null);
     if (!finished && ranges.length) drawFlap(ctx, specimen, ranges, pose);
-    drawContact(ctx, gesture);
+    if (!workingBlisters) drawContact(ctx, gesture);
     ctx.restore();
     if (release) {
       release.start ??= time;
@@ -617,7 +626,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     }
     const splashing = splash.draw(ctx, time);
     if (debug) drawDebug(ctx, specimen, pose);
-    return splashing || Boolean(release || (pose && !pull));
+    return pulsing || splashing || Boolean(release || (pose && !pull));
   }
 
   return {

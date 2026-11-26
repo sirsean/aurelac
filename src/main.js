@@ -1,6 +1,9 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
-import { TOOLS, beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
+import {
+  beginHarvestGesture, createHarvest, moveHarvestGesture, openBlisters, placePearl, storeHarvest, wetCoverage,
+} from './harvest.js';
+import { beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { createRenderer } from './render.js';
 
 const params = new URLSearchParams(location.search);
@@ -13,12 +16,19 @@ const feedback = document.querySelector('#feedback');
 const note = document.querySelector('#bench-note');
 const tools = [...document.querySelectorAll('[data-tool]')];
 const guide = document.querySelector('#guide');
+const instrument = document.querySelector('.instrument');
+const tray = document.querySelector('.tool-tray');
+const pearlActions = document.querySelector('#pearl-actions');
+const lightButton = document.querySelector('#work-light');
+const closeButton = document.querySelector('#close-case');
+const appraisalPanel = document.querySelector('#appraisal');
 const renderer = createRenderer(canvas, {
   debug,
   reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
 });
 
 let specimen = createSpecimen();
+let harvest = createHarvest();
 let tool = 'blade';
 let gesture = null;
 let primary = null;
@@ -41,12 +51,38 @@ const messages = {
   tear: 'The section tears and leaves a ragged remnant.',
   'dry-tear': 'The dry section tears and leaves a ragged remnant.',
   'reverse-tear': 'The bunched fold tears and leaves a ragged remnant.',
+  swollen: 'The blister is swollen. Wait for the pale fold to return.',
+  'cut-part': 'The cut holds. Continue when the blister settles.',
+  'acid-nick': 'Acid leaked from a nick in the blister.',
+  'blister-cut': 'The fold is free. Grip the blister and lift it out.',
+  'blister-attached': 'The fold still holds the blister.',
+  'blister-lifted': 'The blister is free. Cut the next exposed fold.',
+  'pearl-revealed': 'The root pearl is exposed. Apply fazer, then roll it.',
+  rupture: 'The blister ruptures. Poison gas dissolves the root pearl.',
+  fazer: 'The drop clings to the pearl. Grip and roll it to spread the fazer.',
+  coated: 'The fazer has spread across the surface.',
+  seated: 'The pearl sits flat in the padded recess.',
+  rim: 'The pearl rocks on the rim. Re-seat it before closing.',
+  tray: 'Place the pearl in the padded recess.',
 };
 
 const toolHints = {
-  blade: 'Trace the dark crease with the blade.',
-  diffuser: 'Sweep the diffuser over the exposed pink tissue.',
-  grip: 'Take the raised pink edge.',
+  membrane: {
+    blade: 'Trace the dark crease with the blade.',
+    diffuser: 'Sweep the diffuser over the exposed pink tissue.',
+    grip: 'Take the raised pink edge.',
+  },
+  blisters: {
+    blade: 'Cut a pale fold when the blister settles.',
+    grip: 'Lift a blister after cutting through its fold.',
+  },
+  pearl: {
+    fazer: 'Apply a drop to the root pearl.',
+    grip: 'Roll the pearl to inspect or spread the fazer.',
+    case: 'Lift the pearl into the padded recess.',
+  },
+  ruined: {},
+  stored: {},
 };
 
 function report(text) {
@@ -60,7 +96,7 @@ function render(time) {
   const drying = dryMembrane(specimen, time);
   if (wasWet && !peelIsWet(specimen)) report(messages.dried);
   if (gesture?.pull && !gesture.finished) reportInteraction(continuePeel(specimen, gesture, time), time);
-  const animating = renderer.draw(specimen, gesture, time);
+  const animating = renderer.draw(specimen, harvest, gesture, time);
   if (animating || gesture?.pull?.settling) requestRender();
   else if (drying) dryingTimer = setTimeout(requestRender, 65);
 }
@@ -72,9 +108,21 @@ function requestRender() {
 }
 
 function updateTool() {
+  const options = toolHints[harvest.stage];
+  if (!Object.hasOwn(options, tool)) tool = Object.keys(options)[0];
+  instrument.dataset.stage = harvest.stage;
+  tray.hidden = Object.keys(options).length === 0;
   for (const button of tools) {
+    button.hidden = !Object.hasOwn(options, button.dataset.tool);
     button.setAttribute('aria-pressed', String(button.dataset.tool === tool));
   }
+  pearlActions.hidden = harvest.stage !== 'pearl' && harvest.stage !== 'ruined';
+  lightButton.hidden = harvest.stage !== 'pearl';
+  lightButton.setAttribute('aria-pressed', String(harvest.light));
+  closeButton.textContent = harvest.stage === 'ruined' ? 'Record loss' : 'Close case';
+  closeButton.disabled = harvest.stage !== 'ruined' && harvest.placement === 'tray';
+  appraisalPanel.hidden = harvest.stage !== 'stored';
+  note.parentElement.hidden = harvest.stage === 'stored';
 }
 
 function finishGesture() {
@@ -91,9 +139,10 @@ function finishGesture() {
 function reset() {
   finishGesture();
   specimen = createSpecimen();
+  harvest = createHarvest();
   tool = 'blade';
   feedback.textContent = 'The specimen is intact.';
-  note.textContent = toolHints[tool];
+  note.textContent = toolHints[harvest.stage][tool];
   renderer.clearMotion();
   updateTool();
   requestRender();
@@ -110,7 +159,9 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
   const location = toBoard(event, canvas.getBoundingClientRect());
   if (primary === null) {
-    const next = beginGesture(specimen, tool, location, event.timeStamp);
+    const next = harvest.stage === 'membrane'
+      ? beginGesture(specimen, tool, location, event.timeStamp)
+      : beginHarvestGesture(harvest, tool, location);
     if (!next) {
       if (tool === 'grip' && !exposed(specimen) && specimen.cut.some(Boolean)) report(messages.grab);
       return;
@@ -118,7 +169,8 @@ canvas.addEventListener('pointerdown', (event) => {
     gesture = next;
     primary = event.pointerId;
     if (next.diffusing) reportInteraction('wet', event.timeStamp);
-  } else if (gesture?.tool === 'grip' && anchor === null
+    if (next.placedDrop) report(messages.fazer);
+  } else if (harvest.stage === 'membrane' && gesture?.tool === 'grip' && anchor === null
       && distance(location, point(197, 207)) <= TUNING.pinRadius) {
     anchor = event.pointerId;
     gesture.pinned = true;
@@ -133,11 +185,24 @@ canvas.addEventListener('pointermove', (event) => {
   if (event.pointerId !== primary || !gesture) return;
   const rect = canvas.getBoundingClientRect();
   const samples = event.getCoalescedEvents?.();
+  const membrane = harvest.stage === 'membrane';
+  const before = harvest.stage === 'pearl' ? wetCoverage(harvest) : null;
   let result = null;
   for (const sample of samples?.length ? samples : [event]) {
-    result = moveGesture(specimen, gesture, toBoard(sample, rect), sample.timeStamp) ?? result;
+    const location = toBoard(sample, rect);
+    const event = membrane
+      ? moveGesture(specimen, gesture, location, sample.timeStamp)
+      : moveHarvestGesture(harvest, gesture, location, sample.timeStamp);
+    if (event && (event !== 'swollen' || !result)) result = event;
   }
-  reportInteraction(result, event.timeStamp);
+  if (membrane) {
+    reportInteraction(result, event.timeStamp);
+  } else if (result) {
+    report(messages[result]);
+    updateTool();
+  } else if (before !== null && before < 1 && wetCoverage(harvest) === 1) {
+    report(messages.coated);
+  }
   requestRender();
 });
 
@@ -158,10 +223,21 @@ function reportInteraction(result, time) {
   } else if (result === 'cut' || result === 'nick') {
     report(messages[result]);
   }
+  if (harvest.stage === 'membrane' && exposed(specimen)) {
+    openBlisters(harvest, specimen, time);
+    updateTool();
+  }
 }
 
 function endPointer(event) {
   if (event.pointerId === primary) {
+    if (event.type === 'pointerup') {
+      const placement = placePearl(harvest, gesture);
+      if (placement) {
+        report(messages[placement]);
+        updateTool();
+      }
+    }
     finishGesture();
   } else if (event.pointerId === anchor) {
     anchor = null;
@@ -182,11 +258,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function selectTool(next) {
-  if (next === tool || !TOOLS.includes(next)) return;
+  if (next === tool || !Object.hasOwn(toolHints[harvest.stage], next)) return;
   finishGesture();
   tool = next;
   updateTool();
-  if (!exposed(specimen)) note.textContent = toolHints[tool];
+  note.textContent = toolHints[harvest.stage][tool];
 }
 
 for (const button of tools) {
@@ -200,6 +276,27 @@ for (const button of tools) {
 }
 
 document.querySelector('#reset').addEventListener('click', reset);
+lightButton.addEventListener('click', () => {
+  harvest.light = !harvest.light;
+  if (harvest.light && wetCoverage(harvest) < 1) {
+    report('The work light catches a hazy patch. Apply fazer and roll the pearl again.');
+  }
+  updateTool();
+  requestRender();
+});
+closeButton.addEventListener('click', () => {
+  const appraisal = storeHarvest(harvest);
+  if (!appraisal) return;
+  finishGesture();
+  harvest.light = true;
+  document.querySelector('#appraisal-outcome').textContent = appraisal.outcome;
+  document.querySelector('#appraisal-size').textContent = appraisal.size;
+  document.querySelector('#appraisal-amber').textContent = `${appraisal.amberDepth} / 100`;
+  document.querySelector('#appraisal-clarity').textContent = `${appraisal.clarity} / 100`;
+  document.querySelector('#appraisal-observation').textContent = appraisal.observation;
+  report(appraisal.observation);
+  updateTool();
+});
 document.querySelector('#open-guide').addEventListener('click', () => {
   finishGesture();
   guide.showModal();
