@@ -47,6 +47,30 @@ function pinkSurface(t) {
   return { x: x - 7, y: y + 20 };
 }
 
+async function expectSplash(page) {
+  const contact = await boardPoint(page, pinkSurface(0.5));
+  await page.mouse.move(contact.x, contact.y);
+  await page.mouse.down();
+  try {
+    const changed = await page.evaluate(async () => {
+      const canvas = document.querySelector('#specimen');
+      const ctx = canvas.getContext('2d');
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const capture = () => ctx.getImageData(canvas.width * 0.38, canvas.height * 0.42,
+        canvas.width * 0.3, canvas.height * 0.24).data;
+      await frame();
+      const first = capture();
+      await frame();
+      await frame();
+      return capture().some((value, index) => value !== first[index]);
+    });
+    assert.ok(changed, 'the diffuser should animate while held still on the membrane');
+    await screenshot(page, 'desktop-diffuser-splash');
+  } finally {
+    await page.mouse.up();
+  }
+}
+
 async function expectCleanLobe(page) {
   // The detached curl should leave the work surface after the release animation.
   await page.waitForFunction(() => {
@@ -63,7 +87,8 @@ async function expectCleanLobe(page) {
 }
 
 function handle(index = 0) {
-  return { x: ATTACHMENTS[index].x - 8, y: ATTACHMENTS[index].y + 10 };
+  const anchor = ATTACHMENTS[index];
+  return { x: anchor.x + 26 * PEEL_DIRECTION.x, y: anchor.y + 26 * PEEL_DIRECTION.y };
 }
 
 function target(distance, index = 0) {
@@ -71,12 +96,12 @@ function target(distance, index = 0) {
   return { x: start.x + distance * PEEL_DIRECTION.x, y: start.y + distance * PEEL_DIRECTION.y };
 }
 
-async function startPeel(page, distance, index = 0) {
+async function startPeel(page, distance, index = 0, steps = 18) {
   const from = await boardPoint(page, handle(index));
   const to = await boardPoint(page, target(distance, index));
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 18 });
+  await page.mouse.move(to.x, to.y, { steps });
 }
 
 async function screenshot(page, name) {
@@ -115,6 +140,7 @@ try {
 
   await trace(page, 0.34, 0.68);
   await selectTool(page, 'Diffuser');
+  await expectSplash(page);
   await trace(page, 0.36, 0.68, pinkSurface);
   assert.match(await page.locator('#bench-note').textContent(), /fold is wet/);
   await screenshot(page, 'desktop-wet');
@@ -126,7 +152,12 @@ try {
   await selectTool(page, 'Blade');
   await trace(page, 0.63, 0.91);
   await selectTool(page, 'Grip');
-  await startPeel(page, 45);
+  await startPeel(page, -65);
+  assert.match(await page.getByRole('status').textContent(), /bunches/);
+  await screenshot(page, 'desktop-fold-bunched');
+  await page.mouse.up();
+  await startPeel(page, 75);
+  await page.getByText('The membrane is free. The carrom lobe is exposed.').first().waitFor();
   await page.mouse.up();
   assert.match(await page.locator('#bench-note').textContent(), /membrane is free/);
   await expectCleanLobe(page);
@@ -181,7 +212,8 @@ try {
   await selectTool(touch, 'Diffuser');
   await trace(touch, 0.34, 0.69);
   await selectTool(touch, 'Grip');
-  await startPeel(touch, 45, 1);
+  await startPeel(touch, 74, 1);
+  await touch.waitForFunction(() => document.querySelector('#feedback').textContent.includes('remnant remains'));
   await touch.mouse.up();
   assert.match(await touch.locator('#bench-note').textContent(), /remnant remains/);
   await screenshot(touch, 'touch-exposed-with-remnant');
@@ -189,10 +221,13 @@ try {
   assert.match(await touch.getByRole('status').textContent(), /Starter slit restored/);
 
   // Complete the starter node with touch input for each tool.
-  async function swipe(positions) {
+  async function swipe(positions, settle = false) {
     const samples = await Promise.all(positions.map((position) => boardPoint(touch, position)));
     await send('touchStart', [samples[0]]);
     for (const sample of samples.slice(1)) await send('touchMove', [sample]);
+    if (settle) {
+      await touch.waitForFunction(() => document.querySelector('#feedback').textContent.includes('membrane is free'));
+    }
     await send('touchEnd', []);
   }
   await selectTool(touch, 'Blade', 'touch');
@@ -202,7 +237,7 @@ try {
   assert.match(await touch.getByRole('status').textContent(), /fold is wet/);
   await selectTool(touch, 'Grip', 'touch');
   const start = handle();
-  await swipe([start, { x: start.x - 26, y: start.y - 8 }, { x: start.x - 45, y: start.y - 12 }]);
+  await swipe([start, { x: start.x + 31, y: start.y + 10 }, { x: start.x + 72, y: start.y + 22 }], true);
   assert.match(await touch.getByRole('status').textContent(), /membrane is free/);
   await expectCleanLobe(touch);
   await screenshot(touch, 'touch-clean-peel');

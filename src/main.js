@@ -1,6 +1,6 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
-import { TOOLS, beginGesture, createSpecimen, exposed, moveGesture, peelIsWet } from './specimen.js';
+import { TOOLS, beginGesture, continuePeel, createSpecimen, exposed, moveGesture, peelIsWet } from './specimen.js';
 import { createRenderer } from './render.js';
 
 const params = new URLSearchParams(location.search);
@@ -30,11 +30,11 @@ const messages = {
   cut: 'Pink tissue is exposed. Sweep it with the diffuser.',
   nick: 'The blade nicked the membrane. Keep the next cut on the crease.',
   wet: 'The membrane shines where it is wet. Sweep toward any matte patches.',
-  soaked: 'The fold is wet. Use Grip to pull the raised corner to the left.',
+  soaked: 'The fold is wet and the edge has lifted.',
   husk: 'The flap caught on the husk. Extend the slit from either end.',
   dry: 'A dry fold is holding the flap. Sweep the diffuser over the matte pink tissue.',
-  angle: 'The flap is stretching. Ease off and pull the raised corner back to the left.',
-  grab: 'Grab the raised pink fold near the left side of the opening.',
+  angle: 'The fold bunches under the grip.',
+  grab: 'Grab the raised pink edge.',
   peeled: 'The membrane is free. The carrom lobe is exposed.',
   tear: 'The membrane tears and leaves a pink remnant.',
 };
@@ -42,7 +42,7 @@ const messages = {
 const toolHints = {
   blade: 'Trace the dark crease with the blade.',
   diffuser: 'Sweep the diffuser over the exposed pink tissue.',
-  grip: 'Grab the raised pink corner and pull back to the left.',
+  grip: 'Take the raised pink edge.',
 };
 
 function report(text) {
@@ -52,7 +52,9 @@ function report(text) {
 
 function render(time) {
   frame = null;
-  if (renderer.draw(specimen, gesture, time)) requestRender();
+  if (gesture?.pull?.settling) reportInteraction(continuePeel(specimen, gesture, time), time);
+  const animating = renderer.draw(specimen, gesture, time);
+  if (animating || gesture?.pull?.settling) requestRender();
 }
 
 function requestRender() {
@@ -98,14 +100,14 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
   const location = toBoard(event, canvas.getBoundingClientRect());
   if (primary === null) {
-    const next = beginGesture(specimen, tool, location);
+    const next = beginGesture(specimen, tool, location, event.timeStamp);
     if (!next) {
       if (tool === 'grip' && !exposed(specimen) && specimen.cut.some(Boolean)) report(messages.grab);
       return;
     }
     gesture = next;
     primary = event.pointerId;
-    if (next.diffusing) report(peelIsWet(specimen) ? messages.soaked : messages.wet);
+    if (next.diffusing) reportInteraction('wet', event.timeStamp);
   } else if (gesture?.tool === 'grip' && anchor === null
       && distance(location, point(197, 207)) <= TUNING.pinRadius) {
     anchor = event.pointerId;
@@ -123,9 +125,13 @@ canvas.addEventListener('pointermove', (event) => {
   const samples = event.getCoalescedEvents?.();
   let result = null;
   for (const sample of samples?.length ? samples : [event]) {
-    result = moveGesture(specimen, gesture, toBoard(sample, rect)) ?? result;
+    result = moveGesture(specimen, gesture, toBoard(sample, rect), sample.timeStamp) ?? result;
   }
+  reportInteraction(result, event.timeStamp);
+  requestRender();
+});
 
+function reportInteraction(result, time) {
   const pull = gesture.pull;
   if (result === 'peeled') {
     renderer.detach(pull.target);
@@ -136,12 +142,12 @@ canvas.addEventListener('pointermove', (event) => {
   } else if (!pull?.torn && pull?.catch && pull.load >= 0.14) {
     report(messages[pull.catch]);
   } else if (result === 'wet') {
+    renderer.splash(gesture.wetContact, time);
     report(peelIsWet(specimen) ? messages.soaked : messages.wet);
   } else if (result === 'cut' || result === 'nick') {
     report(messages[result]);
   }
-  requestRender();
-});
+}
 
 function endPointer(event) {
   if (event.pointerId === primary) {

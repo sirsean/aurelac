@@ -44,7 +44,7 @@ Use `/?playtest=intact` to check whether a new player can find and cut the creas
 
 The model suite covers short-slit recovery from either end, dry catches, outward pulls, localized remnants, nicks, and sparse versus dense input sampling. Chromium 156 was exercised at 1280 × 900 with mouse input, at a narrow 320 × 640 viewport, and at 390 × 844 and 375 × 800 with touch emulation. The browser test completed a clean peel, interrupted a two-finger gesture, forced a tear, resized mid-stroke, and completed the damaged peel without resetting. A manual run on the published starter bench still caught after the first extension. Cutting the opposite end and rewetting the margin freed the flap. Fresh-player results and physical-phone performance are pending.
 
-After playtest feedback, the diffuser accepts a sweep across the face of the exposed membrane and shows a wet sheen that stays when the tool changes. The browser check now completes the bench with one short pull after wetting and checks that the detached curl leaves the tray. An additional run uses touch input for all three tools.
+After playtest feedback, the diffuser accepts a sweep across the exposed membrane. It splashes on contact and leaves a sheen when the tool changes. The raised lip opens toward the right. Pulling it outward under steady tension releases the fold, while pulling back into the opening bunches it. Model tests cover a quick flick and sustained tension. Browser checks cover the moving splash, a clean peel on touch, and the detached curl leaving the tray.
 
 ## After the prototype gate
 

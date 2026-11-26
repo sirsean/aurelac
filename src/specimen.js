@@ -1,6 +1,6 @@
 import {
   ATTACHMENTS, LOBE_WIDTH, PEEL_DIRECTION, SEAM, TUNING,
-  between, clamp, closestSeam, distance, offset, openingAt, openingHalfWidth, openingLip, point,
+  between, clamp, closestSeam, distance, mix, offset, openingAt, openingHalfWidth, openingLip, point,
 } from './geometry.js';
 
 export const TOOLS = ['blade', 'diffuser', 'grip'];
@@ -30,7 +30,8 @@ export function peelFront(specimen) {
 export function peelHandle(specimen, index = peelFront(specimen)) {
   if (index < 0) return null;
   const base = ATTACHMENTS[index];
-  return point(base.x - 8, base.y + 10);
+  const lift = mix(11, 26, specimen.attachments[index].wetness);
+  return point(base.x + lift * PEEL_DIRECTION.x, base.y + lift * PEEL_DIRECTION.y);
 }
 
 export function canGrip(specimen, location) {
@@ -45,19 +46,24 @@ export function peelIsWet(specimen) {
     state !== 'attached' || wetness >= TUNING.minimumWetness);
 }
 
-export function beginGesture(specimen, tool, location) {
+export function beginGesture(specimen, tool, location, time = 0) {
   if (exposed(specimen)) return null;
   if (tool === 'grip' && !canGrip(specimen, location)) return null;
+  const diffusing = tool === 'diffuser' && diffuserContact(specimen, location, TUNING.diffuserFirstContact);
   return {
     tool,
     start: location,
     last: location,
     contact: location,
-    diffusing: tool === 'diffuser' && diffuserContact(specimen, location, TUNING.diffuserFirstContact),
+    diffusing,
+    wetContact: diffusing ? location : null,
     handle: tool === 'grip' ? peelHandle(specimen) : null,
     travelUntilContact: tool === 'blade' ? TUNING.bladeTravel : TUNING.contactStep,
     pinned: false,
     recovery: 0,
+    peelTravel: 0,
+    pullDrive: 0,
+    pullTime: time,
     previousLoad: 0,
     torn: false,
     pull: null,
@@ -108,7 +114,7 @@ function catchAt(specimen, index, aligned) {
   const range = openingAt(specimen.cut, base.seamT);
   if (!range || range.width < LOBE_WIDTH - 0.01) {
     const lip = range
-      ? Math.round(range.start + 0.82 * (range.end - range.start))
+      ? Math.round(range.start + 0.18 * (range.end - range.start))
       : Math.round(base.seamT * TUNING.seamSegments);
     return { cause: 'husk', point: range ? openingLip(range, lip, 1) : offset(SEAM[lip], 3) };
   }
@@ -119,20 +125,26 @@ function catchAt(specimen, index, aligned) {
   return null;
 }
 
-function pullContact(specimen, gesture, location) {
-  const dx = location.x - gesture.start.x;
-  const dy = location.y - gesture.start.y;
+export function continuePeel(specimen, gesture, time) {
+  const dx = gesture.contact.x - gesture.start.x;
+  const dy = gesture.contact.y - gesture.start.y;
   const rawLoad = Math.hypot(dx, dy);
   const projected = dx * PEEL_DIRECTION.x + dy * PEEL_DIRECTION.y;
   const aligned = projected >= rawLoad * TUNING.peelAlignment;
   const slip = gesture.pinned ? 0 : 0.07;
   const load = rawLoad * (1 - slip);
-  const peelTravel = Math.min(rawLoad, projected * 1.4) * (1 - slip);
+  const drive = aligned ? projected * (1 - slip) : 0;
+  // Tissue needs a little time to give under load. Travel alone can stretch the flap,
+  // but neither waiting before a flick nor a single big pointer sample can free it.
+  const elapsed = Math.max(0, time - gesture.pullTime);
+  gesture.peelTravel = Math.min(drive, gesture.pullDrive, gesture.peelTravel + elapsed * TUNING.peelRate);
+  gesture.pullDrive = drive;
+  gesture.pullTime = Math.max(time, gesture.pullTime);
   let index = peelFront(specimen);
   let released = 0;
 
   while (index >= 0 && !catchAt(specimen, index, aligned)
-      && peelTravel >= TUNING.peelThreshold + gesture.recovery) {
+      && gesture.peelTravel >= TUNING.peelThreshold + gesture.recovery) {
     specimen.attachments[index].state = 'released';
     gesture.recovery += TUNING.peelPerAttachment;
     released++;
@@ -156,13 +168,14 @@ function pullContact(specimen, gesture, location) {
     event = 'tear';
   }
 
-  const elastic = Math.min(load, TUNING.elasticLimit + gesture.recovery);
+  const elastic = Math.min(load, aligned ? TUNING.elasticLimit + gesture.recovery : 24);
   const ratio = rawLoad ? elastic / rawLoad : 0;
   gesture.pull = {
     target: point(gesture.handle.x + dx * ratio, gesture.handle.y + dy * ratio),
     anchor: catchPoint?.point ?? ATTACHMENTS[Math.max(0, index)],
     load: tension,
     catch: catchPoint?.cause ?? null,
+    settling: index >= 0 && !catchPoint && drive > gesture.peelTravel,
     pinned: gesture.pinned,
     torn: gesture.torn,
   };
@@ -170,10 +183,10 @@ function pullContact(specimen, gesture, location) {
   return event;
 }
 
-export function moveGesture(specimen, gesture, location) {
+export function moveGesture(specimen, gesture, location, time = 0) {
   if (!gesture || gesture.torn || exposed(specimen)) return null;
   gesture.contact = location;
-  if (gesture.tool === 'grip') return pullContact(specimen, gesture, location);
+  if (gesture.tool === 'grip') return continuePeel(specimen, gesture, time);
 
   const start = gesture.last;
   const travel = distance(start, location);
@@ -187,7 +200,10 @@ export function moveGesture(specimen, gesture, location) {
       if (feedback === 'nick' || !event) event = feedback;
     } else {
       gesture.diffusing = diffuserContact(specimen, sample, TUNING.contactStep);
-      if (gesture.diffusing) event = 'wet';
+      if (gesture.diffusing) {
+        gesture.wetContact = sample;
+        event = 'wet';
+      }
     }
     nextContact += TUNING.contactStep;
   }

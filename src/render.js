@@ -1,6 +1,7 @@
 import {
-  ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
+  ATTACHMENTS, BOARD, PEEL_DIRECTION, SEAM, TUNING, between, clamp, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
+import { createDiffuserSplash } from './diffuser-splash.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
 
 const shell = new Path2D(
@@ -235,12 +236,14 @@ function drawMembrane(ctx, specimen, pose) {
   const loadPoint = pose?.anchor ?? base;
   const target = pose?.target ?? unstretched;
   const cover = new Path2D();
-  const edgeX = mix(56, base.x - 1, (front + bend * 2.7) / 12);
-  cover.moveTo(edgeX, 72);
-  cover.bezierCurveTo(edgeX + 43, 120, loadPoint.x + 9 + bend * 22, 154, loadPoint.x, loadPoint.y);
-  cover.bezierCurveTo(edgeX + 14, 233, edgeX + 62, 238, edgeX + 18, 288);
-  cover.lineTo(400, 313);
-  cover.lineTo(388, 57);
+  const spread = front / ATTACHMENTS.length;
+  const edgeX = mix(355, base.x - 22, spread);
+  const foldX = mix(base.x + 29 - 40 * spread, loadPoint.x, bend);
+  cover.moveTo(edgeX, 61);
+  cover.bezierCurveTo(edgeX - 32, 112, foldX + 19, loadPoint.y - 24, foldX, loadPoint.y);
+  cover.bezierCurveTo(foldX - 7, loadPoint.y + 21, edgeX - 30, 248, edgeX - 23, 311);
+  cover.lineTo(0, 331);
+  cover.lineTo(0, 57);
   cover.closePath();
 
   fill(ctx, cover, radial(ctx, 179, 137, 199, materials.membrane));
@@ -321,24 +324,50 @@ function drawFlap(ctx, specimen, ranges, pose) {
   const tension = pose?.load ?? 0;
   const dx = tip.x - base.x;
   const dy = tip.y - base.y;
-  const width = mix(9 + 13 * wet, 27, tension);
+  const direction = Math.atan2(PEEL_DIRECTION.y, PEEL_DIRECTION.x);
+  const turn = clamp(Math.atan2(dy, dx) - direction, -0.48, 0.48);
+  const angle = direction + turn;
+  const length = Math.max(8, dx * Math.cos(angle) + dy * Math.sin(angle));
+  const width = mix(7 + 7 * wet, 19, tension);
+  const rim = mix(3, 10, wet);
+
+  ctx.save();
+  ctx.translate(base.x, base.y);
+  ctx.rotate(angle);
+
   const flap = new Path2D();
-  flap.moveTo(base.x, base.y);
-  flap.bezierCurveTo(base.x + dx * 0.25, base.y + dy * 0.24 - width,
-    tip.x + 15, tip.y - width, tip.x, tip.y - 4);
-  flap.quadraticCurveTo(tip.x - 8, tip.y + 4, tip.x + 1, tip.y + 6);
-  flap.bezierCurveTo(tip.x + 19, tip.y + width * 0.69,
-    base.x + dx * 0.3, base.y + dy * 0.35 + width * 0.62, base.x, base.y);
+  flap.moveTo(-8, -3);
+  flap.bezierCurveTo(length * 0.22, -width * 0.9, length * 0.68, -width * 1.21, length, -width);
+  flap.bezierCurveTo(length + rim, -width * 0.93, length + rim + 3, width * 0.45, length, width * 0.7);
+  flap.bezierCurveTo(length * 0.69, width * 0.94, length * 0.24, width * 0.54, -8, 3);
   flap.closePath();
-  fill(ctx, flap, radial(ctx, tip.x + 8, tip.y, Math.max(35, Math.hypot(dx, dy)), materials.membrane));
+
+  ctx.save();
+  ctx.translate(3, 5);
+  fill(ctx, flap, '#3d251d62');
+  ctx.restore();
+  fill(ctx, flap, radial(ctx, length - 5, -width / 2, Math.max(29, length * 0.85), materials.membrane));
   line(ctx, flap, '#67423c', 1.18);
 
-  for (let index = 1; index <= 4; index++) {
+  for (const crease of [-0.55, -0.14, 0.25]) {
     const fold = new Path2D();
-    fold.moveTo(tip.x + 3, tip.y + index * 1.8 - 5);
-    fold.quadraticCurveTo(tip.x + dx * -0.48, tip.y + dy * -0.4 + index * 3.4 - 9, base.x, base.y);
-    line(ctx, fold, index === 1 ? '#fbd4c4dc' : '#754641a1', index === 1 ? 1.1 + wet * 1.3 : 0.7);
+    fold.moveTo(-3, crease * 4);
+    fold.quadraticCurveTo(length * 0.47, crease * width - 3, length - rim * 0.5, crease * width);
+    line(ctx, fold, '#774b4498', 0.85);
   }
+
+  // The dark underside opens at the free end. Its bright rim follows the grip point.
+  const underside = new Path2D();
+  underside.moveTo(length - rim * 0.5, -width * 0.74);
+  underside.bezierCurveTo(length + rim * 0.8, -width * 0.72, length + rim * 0.82, width * 0.34, length, width * 0.57);
+  underside.quadraticCurveTo(length + rim * 0.22, -width * 0.18, length - rim * 0.5, -width * 0.74);
+  fill(ctx, underside, '#713e3c');
+  const edge = new Path2D();
+  edge.moveTo(length - rim * 0.65, -width * 0.92);
+  edge.bezierCurveTo(length + rim, -width, length + rim * 1.2, width * 0.22, length, width * 0.64);
+  line(ctx, edge, '#ffe1ca', 1.15 + wet * 1.15);
+  ctx.restore();
+
   if (pose?.catch && tension > 0.15) {
     const contact = new Path2D();
     contact.ellipse(base.x, base.y, 5 + tension * 3, 2.5, -0.5, 0, 2 * Math.PI);
@@ -350,8 +379,8 @@ function drawDetachedFlap(ctx, tip, progress) {
   const curl = new Path2D('M-16 19C-12 3 2-13 23-12C39-11 40 8 24 13C11 17 7 8 1 14C-4 19-9 28-18 27Z');
   const edge = new Path2D('M-13 20C-7 2 9-11 27-7C35-5 35 5 28 7C15 10 11 0 3 8');
   ctx.save();
-  ctx.translate(tip.x - 68 * progress, tip.y - 41 * progress);
-  ctx.rotate(-0.8 * progress);
+  ctx.translate(tip.x + PEEL_DIRECTION.x * 74 * progress, tip.y + PEEL_DIRECTION.y * 74 * progress);
+  ctx.rotate(0.8 * progress);
   ctx.scale(1 - 0.34 * progress, 1 - 0.34 * progress);
   ctx.globalAlpha = 1 - progress;
   fill(ctx, curl, radial(ctx, 13, 2, 36, materials.membrane));
@@ -366,15 +395,15 @@ function drawDamage(ctx, specimen) {
     const { x, y } = attachment.tearAt;
     const remnant = new Path2D();
     remnant.moveTo(x, y);
-    remnant.bezierCurveTo(x - 7, y - 3, x - 12, y - 24, x - 35, y - 24);
-    remnant.quadraticCurveTo(x - 34, y - 17, x - 45, y - 16);
-    remnant.lineTo(x - 33, y - 13);
-    remnant.quadraticCurveTo(x - 29, y - 13, x - 32, y - 7);
-    remnant.lineTo(x - 21, y - 8);
-    remnant.quadraticCurveTo(x - 16, y - 6, x - 18, y + 1);
-    remnant.quadraticCurveTo(x - 8, y + 3, x, y);
+    remnant.bezierCurveTo(x + 7, y - 3, x + 12, y - 24, x + 35, y - 24);
+    remnant.quadraticCurveTo(x + 34, y - 17, x + 45, y - 16);
+    remnant.lineTo(x + 33, y - 13);
+    remnant.quadraticCurveTo(x + 29, y - 13, x + 32, y - 7);
+    remnant.lineTo(x + 21, y - 8);
+    remnant.quadraticCurveTo(x + 16, y - 6, x + 18, y + 1);
+    remnant.quadraticCurveTo(x + 8, y + 3, x, y);
     remnant.closePath();
-    fill(ctx, remnant, radial(ctx, x - 18, y - 13, 32, materials.membrane));
+    fill(ctx, remnant, radial(ctx, x + 18, y - 13, 32, materials.membrane));
     line(ctx, remnant, '#623f36', 1.3);
   }
   for (const nick of specimen.nicks) {
@@ -473,6 +502,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   const ctx = canvas.getContext('2d');
   const tray = createTrayLayer();
   const lobes = createLobeLayer();
+  const splash = createDiffuserSplash(reducedMotion);
   let body;
   let seed;
   let pose = null;
@@ -527,18 +557,21 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
       if (progress < 1) drawDetachedFlap(ctx, release.tip, progress);
       else release = null;
     }
+    const splashing = splash.draw(ctx, time);
     if (debug) drawDebug(ctx, specimen, pose);
-    return Boolean(release || (pose && (!pull || pull.torn)));
+    return splashing || Boolean(release || (pose && (!pull || pull.torn)));
   }
 
   return {
     draw,
+    splash: splash.add,
     detach(tip) {
       if (!reducedMotion) release = { tip, start: null };
     },
     clearMotion() {
       pose = null;
       release = null;
+      splash.clear();
     },
   };
 }

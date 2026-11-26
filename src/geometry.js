@@ -15,9 +15,10 @@ export const TUNING = {
   usefulOpening: 0.53,
   starterCut: [22, 43],
   minimumWetness: 0.46,
-  peelAlignment: 0.24,
-  peelThreshold: 12,
-  peelPerAttachment: 2.15,
+  peelAlignment: 0.72,
+  peelThreshold: 17,
+  peelPerAttachment: 3.9,
+  peelRate: 0.32,
   elasticLimit: 74,
   wetRecovery: 13,
   tearInput: 120,
@@ -69,11 +70,11 @@ export const SEAM = Array.from(
 );
 
 export const ATTACHMENTS = Array.from({ length: 12 }, (_, index) => {
-  const sample = seamSample(mix(0.37, 0.65, index / 11));
+  const sample = seamSample(mix(0.65, 0.37, index / 11));
   return { ...offset(sample, -6), seamT: sample.t };
 });
 
-export const PEEL_DIRECTION = point(-0.93, -0.37);
+export const PEEL_DIRECTION = point(0.94, 0.342);
 export const LOBE_WIDTH = 102;
 
 export function openings(cut) {

@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ATTACHMENTS, PEEL_DIRECTION, between, offset, openingAt, openings, point, seamPoint, SEAM } from '../src/geometry.js';
-import { beginGesture, createSpecimen, exposed, moveGesture, peelFront, peelHandle, peelIsWet } from '../src/specimen.js';
+import { beginGesture, continuePeel, createSpecimen, exposed, moveGesture, peelFront, peelHandle, peelIsWet } from '../src/specimen.js';
 
 function draw(specimen, tool, locations) {
   const gesture = beginGesture(specimen, tool, locations[0]);
   assert.ok(gesture, `could not begin ${tool}`);
   let result;
-  for (const location of locations.slice(1)) {
-    result = moveGesture(specimen, gesture, location) ?? result;
+  for (const [index, location] of locations.slice(1).entries()) {
+    result = moveGesture(specimen, gesture, location, (index + 1) * 16) ?? result;
   }
+  if (gesture.pull?.settling) result = continuePeel(specimen, gesture, locations.length * 16 + 300) ?? result;
   return { gesture, result };
 }
 
@@ -51,7 +52,7 @@ test('the short starter opening can be extended from either end', () => {
   }
 });
 
-test('a sweep across the face of the pink tissue prepares one short leftward peel', () => {
+test('a sweep across the face of the pink tissue prepares one controlled rightward peel', () => {
   const specimen = createSpecimen();
   const sweep = SEAM.slice(22, 44).map((sample) => offset(sample, 22));
   assert.equal(draw(specimen, 'diffuser', sweep).result, undefined);
@@ -63,9 +64,27 @@ test('a sweep across the face of the pink tissue prepares one short leftward pee
 
   const handle = peelHandle(specimen);
   const start = point(handle.x + 17, handle.y + 12);
-  assert.equal(draw(specimen, 'grip', [start, point(start.x - 42, start.y - 9)]).result, 'peeled');
+  assert.equal(draw(specimen, 'grip', [start, point(start.x + 72, start.y + 13)]).result, 'peeled');
   assert.equal(exposed(specimen), true);
   assert.ok(specimen.attachments.every(({ state, tearAt }) => state === 'released' && !tearAt));
+});
+
+test('the raised edge faces the release direction and a flick only takes up slack', () => {
+  const specimen = createSpecimen();
+  trace(specimen, 'blade', 0.2, 0.82);
+  const dryTip = peelHandle(specimen);
+  trace(specimen, 'diffuser', 0.34, 0.68);
+  const tip = peelHandle(specimen);
+  assert.ok(tip.x > dryTip.x && tip.x > ATTACHMENTS[peelFront(specimen)].x);
+
+  const gesture = beginGesture(specimen, 'grip', tip, 10);
+  const target = (travel) => point(tip.x + travel * PEEL_DIRECTION.x, tip.y + travel * PEEL_DIRECTION.y);
+  moveGesture(specimen, gesture, target(24), 400);
+  moveGesture(specimen, gesture, target(78), 421);
+  assert.equal(peelFront(specimen), 0);
+  assert.ok(gesture.pull.settling);
+  assert.equal(continuePeel(specimen, gesture, 640), 'peeled');
+  assert.ok(exposed(specimen));
 });
 
 test('a dry attachment holds a wide slit open until a local sweep reaches it', () => {
@@ -77,7 +96,7 @@ test('a dry attachment holds a wide slit open until a local sweep reaches it', (
   assert.equal(gesture.pull.catch, 'dry');
   assert.deepEqual(gesture.pull.anchor, ATTACHMENTS[dry]);
 
-  trace(specimen, 'diffuser', ATTACHMENTS[dry].seamT - 0.06, 0.68);
+  trace(specimen, 'diffuser', ATTACHMENTS[dry].seamT + 0.04, 0.35);
   assert.equal(pull(specimen, 86).result, 'peeled');
 });
 
@@ -86,7 +105,7 @@ test('an outward tug creates tension, and relaxing it does not tear the flap', (
   trace(specimen, 'blade', 0.64, 1);
   trace(specimen, 'diffuser', 0.33, 0.68);
   const handle = peelHandle(specimen);
-  const { gesture } = pull(specimen, 55, point(0, 1));
+  const { gesture } = pull(specimen, 55, point(-1, 0));
   assert.equal(gesture.pull.catch, 'angle');
   assert.equal(peelFront(specimen), 0);
   moveGesture(specimen, gesture, handle);
