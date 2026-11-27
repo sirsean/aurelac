@@ -1,7 +1,7 @@
 import './style.css';
 import { BOARD, TUNING, distance, point } from './geometry.js';
 import {
-  COATING_PATCHES, beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture,
+  COATING_PATCHES, RUPTURE_DURATION, beginHarvestGesture, createHarvest, finishHarvestGesture, moveHarvestGesture,
   openBlisters, pearlIsClean, storeHarvest,
 } from './harvest.js';
 import { beginGesture, continuePeel, createSpecimen, dryMembrane, exposed, moveGesture, peelIsWet } from './specimen.js';
@@ -32,10 +32,8 @@ const nodeSelect = document.querySelector('#node-select');
 const nodeId = document.querySelector('#node-id');
 const bladeFlat = document.querySelector('#blade-flat');
 const collection = document.querySelector('#collection');
-const renderer = createRenderer(canvas, {
-  debug,
-  reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
-});
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const renderer = createRenderer(canvas, { debug, reducedMotion });
 const settings = { sound: false, haptics: false };
 const effects = createFeedback(settings);
 
@@ -83,7 +81,8 @@ const messages = {
   'blister-in-husk': 'Drag the cut blister clear of the opening.',
   'blister-lifted': 'The blister is out. The pearl is showing through.',
   'pearl-revealed': 'The root pearl is exposed. Spray the coating with Fazer.',
-  rupture: 'The blister ruptures. Poison gas dissolves the root pearl.',
+  rupture: 'The blister ruptures. Gas escapes into the opening.',
+  loss: 'The root pearl is gone.',
   fazer: 'Hold the spray on the amber goop until it turns green.',
   'coating-wiped': 'The treated coating is lifting off.',
   'coating-sticky': 'The amber coating is still sticky. Spray it with Fazer.',
@@ -121,13 +120,17 @@ const benchDescriptions = {
   membrane: 'Overhead view of a tethered Aurelac node',
   blisters: 'Exposed carrom blisters on the harvest bench',
   pearl: 'Root pearl and padded storage case',
-  ruined: 'The remains of a dissolved root pearl',
+  ruined: 'The ruptured Aurelac node on the harvest bench',
   stored: 'The appraisal view of the root pearl and its case',
 };
 
 function report(text) {
   if (feedback.textContent !== text) feedback.textContent = text;
   if (note.textContent !== text) note.textContent = text;
+}
+
+function lossReady(time = performance.now()) {
+  return harvest.stage === 'ruined' && (reducedMotion || time - harvest.rupture.at >= RUPTURE_DURATION);
 }
 
 function render(time) {
@@ -138,6 +141,10 @@ function render(time) {
   if (gesture?.pull && !gesture.finished) reportInteraction(continuePeel(specimen, gesture, time), time);
   if (gesture?.sprayContact && moveHarvestGesture(harvest, gesture, gesture.last, time)) sprayFazer(time);
   const animating = renderer.draw(specimen, harvest, gesture, time, tool);
+  if (pearlActions.hidden && lossReady(time)) {
+    report(messages.loss);
+    updateTool(time);
+  }
   if (animating || gesture?.pull?.settling || gesture?.sprayContact) requestRender();
   else if (drying) dryingTimer = setTimeout(requestRender, 65);
 }
@@ -148,25 +155,28 @@ function requestRender() {
   frame ??= requestAnimationFrame(render);
 }
 
-function updateTool() {
-  const options = toolHints[harvest.stage];
+function updateTool(time) {
+  const ruined = harvest.stage === 'ruined';
+  const canRecord = lossReady(time);
+  const options = toolHints[ruined ? 'blisters' : harvest.stage];
   if (!Object.hasOwn(options, tool)) tool = Object.keys(options)[0];
   instrument.dataset.stage = harvest.stage;
-  canvas.setAttribute('aria-label', benchDescriptions[harvest.stage]);
+  canvas.setAttribute('aria-label', benchDescriptions[harvest.rupture ? 'ruined' : harvest.stage]);
   bladeFlat.setAttribute('opacity', String(bladeDrag(blade)));
   nodeSelect.value = String(specimen.seed);
   nodeId.textContent = nodeCode(specimen.seed);
-  tray.hidden = Object.keys(options).length === 0;
+  tray.hidden = canRecord || Object.keys(options).length === 0;
   for (const button of tools) {
     button.hidden = !Object.hasOwn(options, button.dataset.tool);
+    button.disabled = ruined;
     button.setAttribute('aria-pressed', String(button.dataset.tool === tool));
     if (button.dataset.tool === 'wipe') button.textContent = pearlIsClean(harvest) ? 'Roll' : 'Wipe';
   }
-  pearlActions.hidden = harvest.stage !== 'pearl' && harvest.stage !== 'ruined';
+  pearlActions.hidden = harvest.stage !== 'pearl' && !canRecord;
   lightButton.hidden = harvest.stage !== 'pearl';
   lightButton.setAttribute('aria-pressed', String(harvest.light));
-  closeButton.textContent = harvest.stage === 'ruined' ? 'Record loss' : 'Close case';
-  closeButton.disabled = harvest.stage !== 'ruined' && harvest.placement === 'tray';
+  closeButton.textContent = ruined ? 'Record loss' : 'Close case';
+  closeButton.disabled = ruined ? !canRecord : harvest.placement === 'tray';
   appraisalPanel.hidden = harvest.stage !== 'stored';
   note.parentElement.hidden = harvest.stage === 'stored';
 }
@@ -282,7 +292,8 @@ function sprayFazer(time) {
 
 function reportHarvestInteraction(result) {
   if (materialCues[result]) effects.play(materialCues[result]);
-  report(messages[result]);
+  report(result === 'rupture' && lossReady() ? messages.loss : messages[result]);
+  if (result === 'rupture') finishGesture();
   updateTool();
 }
 
@@ -390,10 +401,11 @@ function showAppraisal(appraisal) {
 }
 
 onBenchPress(closeButton, () => {
+  if (harvest.stage === 'ruined' && !lossReady()) return;
   finishGesture();
   const appraisal = storeHarvest(harvest);
   if (!appraisal) return;
-  harvest.light = true;
+  harvest.light = !harvest.rupture;
   const pearl = recordPearl(storage, runId, specimen.seed, appraisal);
   if (pearl) pearls.set(pearl.id, pearl);
   showAppraisal(appraisal);
@@ -448,6 +460,7 @@ if (saved) {
   Object.assign(settings, saved.settings);
   updateTool();
   if (harvest.appraisal) showAppraisal(harvest.appraisal);
+  else if (harvest.stage === 'ruined') report(lossReady() ? messages.loss : messages.rupture);
   else report(specimen.cut.some(Boolean) ? 'Harvest resumed.' : 'The specimen is intact.');
   requestRender();
 } else {

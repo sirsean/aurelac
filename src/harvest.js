@@ -4,6 +4,7 @@ import { wearBlade } from './blade.js';
 
 export const PEARL_CENTER = point(144, 182);
 export const CASE_CENTER = point(291, 215);
+export const RUPTURE_DURATION = 5500;
 
 const nickAt = 10;
 const ruptureAt = 29;
@@ -207,7 +208,7 @@ function cutBlister(harvest, { blister, blade }, location, travel, time) {
   const injury = blister.acid;
   blister.acid += travel * (intoTissue ? 1 : 0.68);
   if (blister.acid >= ruptureAt) {
-    harvest.rupture = { at: time, blister: blister.index };
+    harvest.rupture = { at: time, blister: blister.index, wound: location };
     harvest.stage = 'ruined';
     return 'rupture';
   }

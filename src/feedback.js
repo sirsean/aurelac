@@ -5,9 +5,10 @@ const cues = {
   release: { duration: 0.1, frequency: 800, gain: 0.14, vibration: 12 },
   tear: { duration: 0.2, frequency: 1050, gain: 0.25, vibration: [25, 18, 18] },
   stone: { duration: 0.12, frequency: 2200, gain: 0.12, vibration: 7 },
-  rupture: { duration: 0.38, frequency: 510, gain: 0.27, vibration: [44, 24, 36] },
+  rupture: { duration: 0.9, frequency: 770, gain: 0.27, vibration: [44, 24, 36] },
   case: { duration: 0.06, frequency: 620, gain: 0.15, vibration: 12 },
 };
+const longestCue = Math.max(...Object.values(cues).map(({ duration }) => duration));
 
 export function createFeedback(settings) {
   let audio;
@@ -21,7 +22,7 @@ export function createFeedback(settings) {
     try {
       if (!audio) {
         audio = new AudioContext();
-        noise = audio.createBuffer(1, Math.ceil(audio.sampleRate * 0.4), audio.sampleRate);
+        noise = audio.createBuffer(1, Math.ceil(audio.sampleRate * longestCue), audio.sampleRate);
         const samples = noise.getChannelData(0);
         for (let index = 0; index < samples.length; index++) samples[index] = Math.random() * 2 - 1;
       }

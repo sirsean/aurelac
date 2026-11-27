@@ -231,6 +231,7 @@ test('forcing a swollen seam can ruin the root pearl and records the tray loss',
   assert.equal(moveHarvestGesture(harvest, gesture, start, time + 50), 'rupture');
   assert.equal(harvest.stage, 'ruined');
   assert.equal(harvest.rupture.blister, 0);
+  assert.ok(Number.isFinite(harvest.rupture.wound.x) && Number.isFinite(harvest.rupture.wound.y));
   assert.equal(storeHarvest(harvest).outcome, 'Ruined');
   assert.equal(harvest.appraisal.clarity, 0);
 });

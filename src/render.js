@@ -2,7 +2,7 @@ import {
   ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, closestSeam, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
 import { createLiquidSplash } from './liquid-splash.js';
-import { drawBlisters, drawLiftedBlisters, drawPearlBench } from './harvest-render.js';
+import { drawBlisters, drawLiftedBlisters, drawPearlBench, drawRuptureGas, rupturePose } from './harvest-render.js';
 import { nodeFor } from './nodes.js';
 import { STONE } from './blade.js';
 import { exposed, peelFront, peelHandle } from './specimen.js';
@@ -646,11 +646,12 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.drawImage(tray, 0, 0, BOARD.width, BOARD.height);
-    if (['pearl', 'ruined', 'stored'].includes(harvest.stage)) {
-      const animating = drawPearlBench(ctx, harvest, gesture, time, reducedMotion);
-      return splash.draw(ctx, time) || animating;
+    const failure = harvest.rupture ? rupturePose(harvest, time, reducedMotion) : null;
+    if (!failure && (harvest.stage === 'pearl' || harvest.stage === 'stored')) {
+      drawPearlBench(ctx, harvest, gesture);
+      return splash.draw(ctx, time);
     }
-    const workingBlisters = harvest.stage === 'blisters';
+    const workingBlisters = harvest.stage === 'blisters' || failure;
     ctx.save();
     if (pose && !pose.pinned && !reducedMotion) {
       ctx.translate(clamp(pose.target.x - pose.anchor.x, -100, 100) * pose.load * 0.027,
@@ -660,12 +661,13 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     const ranges = drawSeam(ctx, specimen, lobes);
     let pulsing = false;
     drawOpening(ctx, specimen, ranges, pose, gesture, workingBlisters
-      ? () => { pulsing = drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug); }
+      ? () => { pulsing = drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug, failure); }
       : null);
     if (!finished && ranges.length) drawFlap(ctx, specimen, ranges, pose);
     if (!workingBlisters) drawContact(ctx, gesture);
     ctx.restore();
-    if (workingBlisters) drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion);
+    if (workingBlisters) drawLiftedBlisters(ctx, harvest, gesture, failure?.frozenAt ?? time, reducedMotion);
+    if (failure) drawRuptureGas(ctx, harvest.pocket, failure);
     if (tool === 'stone') drawStone(ctx, gesture);
     if (release) {
       release.start ??= time;

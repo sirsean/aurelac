@@ -187,7 +187,7 @@ h2 { font-size: 2rem; }
 }
 .pearl-actions button[aria-pressed="true"] { background: #3d6056; border-color: #a0beb0; }
 .pearl-actions button:disabled { opacity: .52; cursor: default; }
-.instrument[data-stage="ruined"] .pearl-actions { padding-top: 10px; }
+.instrument[data-stage="ruined"] .pearl-actions { min-height: 72px; padding-top: 10px; border-top: 1px solid #4c5241; }
 .appraisal {
   margin: 15px 0;
   padding: 15px;

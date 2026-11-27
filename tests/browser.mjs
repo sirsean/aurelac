@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { ATTACHMENTS, BOARD, SEAM, TUNING, offset, seamPoint } from '../src/geometry.js';
 import { STONE } from '../src/blade.js';
-import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
+import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, RUPTURE_DURATION, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
 import { COMMON_NODE, NODES, nodeCode } from '../src/nodes.js';
 import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
 
@@ -464,13 +464,36 @@ try {
   await swipe([firstBlister.center, { x: firstBlister.center.x, y: 117 }, { x: firstBlister.center.x, y: 65 }]);
   await expectStatus(touch, 'The pearl is showing through');
   await selectTool(touch, 'Blade', 'touch');
+  const failureCanvas = touch.locator('#specimen');
+  const shellPatch = () => failureCanvas.evaluate((canvas, board) => {
+    const pixels = canvas.getContext('2d').getImageData(138 * canvas.width / board.width,
+      85 * canvas.height / board.height, 8, 8).data;
+    return [...pixels];
+  }, BOARD);
+  const shellBefore = await shellPatch();
   await swipe([
     tissuePoint(blister, -12), tissuePoint(blister, 12), tissuePoint(blister, -12),
-  ], 'Poison gas dissolves');
+  ], 'Gas escapes into the opening');
+  assert.ok(await touch.getByRole('button', { name: 'Blade' }).isDisabled());
+  assert.deepEqual(await shellPatch(), shellBefore);
+  const recordLoss = touch.getByRole('button', { name: 'Record loss' });
+  assert.ok(await recordLoss.isHidden());
+  await touch.waitForTimeout(1600);
+  assert.ok(await recordLoss.isHidden());
+  const gasFrame = await failureCanvas.evaluate((canvas) => canvas.toDataURL());
+  await screenshot(touch, 'touch-rupture-gas');
+  await expectStatus(touch, 'The root pearl is gone', RUPTURE_DURATION + 900);
+  assert.deepEqual(await shellPatch(), shellBefore);
+  const residueFrame = await failureCanvas.evaluate((canvas) => canvas.toDataURL());
+  assert.notEqual(residueFrame, gasFrame);
   await screenshot(touch, 'touch-ruined');
-  await touch.getByRole('button', { name: 'Record loss' }).tap();
+  await recordLoss.tap();
   await touch.locator('#appraisal').waitFor({ timeout: 1600 });
   assert.equal(await touch.locator('#appraisal-outcome').textContent(), 'Ruined');
+  assert.equal(await failureCanvas.evaluate((canvas) => canvas.toDataURL()), residueFrame);
+  await touch.reload();
+  assert.equal(await touch.locator('#appraisal-outcome').textContent(), 'Ruined');
+  await touch.waitForFunction((residueFrame) => document.querySelector('#specimen').toDataURL() === residueFrame, residueFrame);
   await touch.getByRole('button', { name: 'Reset node' }).click();
   await expectIntact(touch);
   const canvases = [];

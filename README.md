@@ -57,7 +57,9 @@ Model tests cover the closed start, one section per grip, timed drying and refre
 
 Five carrom blisters surround the root pearl. Cut each pale fold at its own angle during the settled window. Pausing preserves the cut. A cut blister follows Grip and stays out when released clear of the opening. Each removal exposes more of the pearl inside the husk.
 
-Fazer gradually treats the sticky amber coating while the spray is held over it or swept across it. The goop turns green when Wipe can lift it. Some pearls have a thicker patch that reveals more amber goop as the treated surface comes off. That patch needs another spray and wipe. Once clean, the pearl can be rolled under the work light so a nick's local acid haze rotates into view. A rupture releases poison gas and melts the pearl. The case appraisal records size, amber depth, and clarity. Residual coating and closing on the rim can lower the appraisal.
+Fazer gradually treats the sticky amber coating while the spray is held over it or swept across it. The goop turns green when Wipe can lift it. Some pearls have a thicker patch that reveals more amber goop as the treated surface comes off. That patch needs another spray and wipe. Once clean, the pearl can be rolled under the work light so a nick's local acid haze rotates into view. The case appraisal records size, amber depth, and clarity. Residual coating and closing on the rim can lower the appraisal.
+
+If a blister ruptures, the cutting bench stays in view. The torn tissue deflates, gas spreads out from the cut, and the exposed pearl softens into residue in the husk. Record loss appears when the scene settles, about five and a half seconds after the tear. With reduced motion, the bench shows the aftermath immediately.
 
 Chromium 156 completed pristine, flawed, and ruined harvests on BG–107. Checks covered the five angled cuts, dragging a blister clear, spraying and wiping the pearl in stages, and the closed-start peel with mouse and emulated touch.
 

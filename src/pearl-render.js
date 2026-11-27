@@ -90,9 +90,10 @@ function coatingColor([amber, green], treatment) {
   return `rgb(${channels.join(' ')})`;
 }
 
-function drawCoating(ctx, coating) {
+function drawCoating(ctx, coating, stripped) {
   for (const [index, patch] of COATING_PATCHES.entries()) {
-    const { amount, treatment } = coating[index];
+    const { treatment } = coating[index];
+    const amount = coating[index].amount * (1 - stripped);
     if (!amount) continue;
     const treated = treatment === 1;
     const tint = treated ? 1 : treatment * 0.65;
@@ -115,15 +116,18 @@ function drawCoating(ctx, coating) {
   }
 }
 
-function drawCrystal(ctx, position, { color, pattern, rotation, scale, light, coating, scars = [] }) {
-  if (scale <= 0.02) return;
+function drawCrystal(ctx, position, { color, pattern, rotation, scale, light, coating, scars = [], failure }) {
+  const melt = failure?.melt ?? 0;
+  const stripped = failure?.stripped ?? 0;
+  if (scale <= 0.02 || melt >= 1) return;
   const style = styles[color];
   const { x, y } = position;
-  oval(ctx, x + 3 * scale, y + 11 * scale, 32 * scale, 24 * scale, '#211c2866', -0.16);
+  oval(ctx, x + 3 * scale, y + (11 + 10 * melt) * scale,
+    (32 - 14 * melt) * scale, (24 - 17 * melt) * scale, '#211c2866', -0.16);
 
   ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
+  ctx.translate(x, y + 23 * melt * scale);
+  ctx.scale(scale * (1 - 0.46 * melt), scale * (1 - 0.89 * melt));
   ctx.rotate(rotation);
   const lamp = -2.16 - rotation;
   const [pale, body, dark, rim] = style.shell;
@@ -147,22 +151,26 @@ function drawCrystal(ctx, position, { color, pattern, rotation, scale, light, co
       [0, '#f5e5b7bf'], [0.68, '#cab98c80'], [1, '#c1976800'],
     ]), angle + Math.PI / 2);
   }
-  if (coating) drawCoating(ctx, coating);
+  if (coating) drawCoating(ctx, coating, stripped);
+  if (melt) {
+    ctx.fillStyle = `rgba(52, 36, 26, ${0.86 * melt})`;
+    ctx.fillRect(-36, -36, 72, 72);
+  }
 
   ctx.rotate(-rotation);
   const sweep = Math.sin(rotation);
   const coverage = coating ? coating.reduce((total, { amount }) => total + amount, 0) / coating.length : 0;
-  ctx.globalAlpha = (light ? 0.9 : 0.68) * (1 - 0.84 * coverage);
+  ctx.globalAlpha = (light ? 0.9 : 0.68) * (1 - melt) * (1 - 0.84 * coverage * (1 - stripped));
   oval(ctx, -12 + 4 * sweep, -17, light ? 8.4 : 5.2, light ? 2.15 : 1.45, style.flash, -0.55 + sweep * 0.19);
   oval(ctx, -2 + 4 * sweep, -21, 2.0, 1.1, style.flash, -0.45);
   ctx.restore();
 }
 
-export function drawPearl(ctx, harvest, position, scale = 1) {
+export function drawPearl(ctx, harvest, position, scale = 1, failure) {
   const { pattern, rotation, coating } = harvest.pearl;
   drawCrystal(ctx, position, {
     color: harvest.intrinsic.color, pattern, rotation, coating,
-    scale: scale * harvest.pearl.scale, light: harvest.light, scars: harvest.damage.scars,
+    scale: scale * harvest.pearl.scale, light: harvest.light, scars: harvest.damage.scars, failure,
   });
 }
 

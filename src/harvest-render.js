@@ -1,6 +1,6 @@
 import { gradient, oval, stroke } from './canvas.js';
-import { BOARD, clamp, point } from './geometry.js';
-import { CASE_CENTER, PEARL_CENTER, blisterFold, blisterPose, readyToLift } from './harvest.js';
+import { BOARD, between, clamp, distance, mix, point } from './geometry.js';
+import { CASE_CENTER, PEARL_CENTER, RUPTURE_DURATION, blisterFold, blisterPose, readyToLift } from './harvest.js';
 import { drawPearl } from './pearl-render.js';
 
 const circle = 2 * Math.PI;
@@ -47,7 +47,112 @@ function drawBlister(ctx, blister, time, reducedMotion, detached = false) {
   }
 }
 
-export function drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug) {
+function ease(time, start, end) {
+  const fraction = clamp((time - start) / (end - start));
+  return fraction * fraction * (3 - 2 * fraction);
+}
+
+export function rupturePose(harvest, time, reducedMotion) {
+  const { rupture, blisters } = harvest;
+  const culprit = blisters[rupture.blister];
+  const complete = reducedMotion || harvest.stage === 'stored';
+  const elapsed = complete ? RUPTURE_DURATION : clamp(time - rupture.at, 0, RUPTURE_DURATION);
+  return {
+    elapsed, culprit, frozenAt: rupture.at,
+    wound: rupture.wound ?? blisterFold(culprit, 0.5),
+    collapse: ease(elapsed, 40, 1280),
+    slump: ease(elapsed, 360, 2200),
+    stripped: ease(elapsed, 760, 1700),
+    melt: ease(elapsed, 1660, 4390),
+    active: elapsed < RUPTURE_DURATION,
+  };
+}
+
+const tear = new Path2D('M-12 1 -7-2 -4-1 -1-5 3-2 7-3 12-1 6 2 2 2 -1 4 -6 2Z');
+
+function drawDeflatingBlister(ctx, blister, pocket, failure, reducedMotion) {
+  const { center, axis } = blister;
+  const ruptured = blister === failure.culprit;
+  const amount = ruptured ? failure.collapse : failure.slump * 0.48;
+  const angle = Math.atan2(axis.y, axis.x);
+  const retreat = failure.slump * (10 + (1 - clamp(distance(center, pocket) / 65)) * 11);
+  const fromPocket = Math.max(10, distance(center, pocket));
+  const x = center.x + (center.x - pocket.x) * retreat / fromPocket;
+  const y = center.y + (center.y - pocket.y) * retreat / fromPocket;
+  ctx.save();
+  ctx.translate(x, y + 2 * amount);
+  ctx.rotate(angle);
+  ctx.scale(1 - 0.3 * amount, 1 - 0.77 * amount);
+  ctx.rotate(-angle);
+  ctx.translate(-center.x, -center.y);
+  drawBlister(ctx, blister, failure.frozenAt, reducedMotion);
+  ctx.restore();
+
+  if (ruptured && failure.collapse > 0) {
+    ctx.save();
+    const wound = between(failure.wound, { x, y }, failure.collapse * 0.86);
+    ctx.translate(wound.x, wound.y);
+    ctx.rotate(angle);
+    ctx.scale(0.45 + failure.collapse * 0.55, 0.5 + failure.collapse * 0.22);
+    ctx.globalAlpha = failure.collapse;
+    ctx.fillStyle = '#322320';
+    ctx.fill(tear);
+    stroke(ctx, tear, '#b67855', 0.85);
+    ctx.restore();
+  }
+}
+
+const plumes = [
+  { start: 130, duration: 1370, drift: -16, rise: 22, size: 25, fade: 0.66 },
+  { start: 290, duration: 2080, drift: 17, rise: 45, size: 48, fade: 0.6 },
+  { start: 530, duration: 2780, drift: -38, rise: 61, size: 62, fade: 0.69 },
+  { start: 840, duration: 3150, drift: 30, rise: 71, size: 63, fade: 0.65 },
+  { start: 1110, duration: 3130, drift: -17, rise: 46, size: 54, fade: 0.65 },
+  { start: 1570, duration: 3270, drift: 31, rise: 59, size: 62, fade: 0.47 },
+  { start: 2020, duration: 3000, drift: -28, rise: 38, size: 42, fade: 0.37 },
+];
+
+export function drawRuptureGas(ctx, pocket, failure) {
+  for (const [index, plume] of plumes.entries()) {
+    const progress = clamp((failure.elapsed - plume.start) / plume.duration);
+    if (progress === 0 || progress === 1) continue;
+    const spread = Math.sqrt(progress);
+    const origin = between(failure.wound, pocket, clamp((index - 2) / 5));
+    const x = origin.x + plume.drift * spread + Math.sin(progress * 7 + index) * 7 * spread;
+    const y = origin.y - plume.rise * progress + Math.sin(progress * 4 + index) * 4 * spread;
+    const radius = 4 + plume.size * spread;
+    const opacity = Math.sin(progress ** 0.54 * Math.PI) * plume.fade;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-0.22);
+    ctx.scale(1, 0.68);
+    oval(ctx, 0, 0, radius, radius, gradient(ctx, 0, 0, radius, [
+      [0, `rgba(211, 209, 140, ${opacity})`],
+      [0.38, `rgba(165, 172, 100, ${opacity * 0.8})`],
+      [1, '#8b9a5a00'],
+    ]));
+    ctx.restore();
+  }
+}
+
+const residue = new Path2D('M-24 0C-20-4-12-3-8-6C-3-9 4-6 11-6C17-7 24-4 24-1C24 3 18 7 12 5C7 4 4 8-3 8C-10 7-15 4-20 4Q-26 4-24 0Z');
+
+function drawPearlResidue(ctx, { x, y }, melt) {
+  if (melt <= 0) return;
+  ctx.save();
+  ctx.translate(x + 1, y + 11);
+  ctx.rotate(-0.14);
+  ctx.scale(0.24 + 0.79 * melt, 0.47 + 0.53 * melt);
+  ctx.fillStyle = gradient(ctx, -2, -1, 26, [
+    [0, '#726244'], [0.54, '#4b3b2b'], [1, '#292520'],
+  ]);
+  ctx.fill(residue);
+  oval(ctx, -5, -2, 9, 2.1, '#b8996583', -0.12);
+  oval(ctx, 11, 2, 2.1, 1.2, '#a38a5f73', 0.2);
+  ctx.restore();
+}
+
+export function drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug, failure) {
   const { x, y } = harvest.pocket;
   ctx.fillStyle = gradient(ctx, x - 6, y - 4, 117, [[0, '#85523c'], [0.54, '#644231'], [1, '#3c2a26']]);
   ctx.fillRect(0, 0, BOARD.width, BOARD.height);
@@ -61,25 +166,28 @@ export function drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug) 
   }
 
   const opened = harvest.blisters.filter(({ removed }) => removed).length;
-  if (opened || gesture?.preview) {
-    const amount = (opened + (gesture?.preview ? 0.44 : 0)) / harvest.blisters.length;
+  const revealed = (opened + (gesture?.preview ? 0.44 : 0)) / harvest.blisters.length;
+  const amount = failure ? mix(revealed, 0.94, failure.slump) : revealed;
+  if (amount > 0) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(x + 7 * (1 - amount), y - 4, 12 + amount * 30, 10 + amount * 32, 0.28, 0, circle);
     ctx.clip();
-    drawPearl(ctx, harvest, harvest.pocket, 0.82);
+    if (failure) drawPearlResidue(ctx, harvest.pocket, failure.melt);
+    drawPearl(ctx, harvest, harvest.pocket, 0.82, failure);
     ctx.restore();
   }
   for (const blister of harvest.blisters) {
     if (blister.removed || (gesture?.blister === blister && gesture.preview)) continue;
-    drawBlister(ctx, blister, time, reducedMotion);
-    if (debug) {
+    if (failure) drawDeflatingBlister(ctx, blister, harvest.pocket, failure, reducedMotion);
+    else drawBlister(ctx, blister, time, reducedMotion);
+    if (debug && !failure) {
       ctx.font = '9px monospace';
       ctx.fillStyle = '#fff4d4';
       ctx.fillText(blisterPose(blister, time).settled ? 'slack' : 'swell', blister.center.x - 11, blister.center.y + 23);
     }
   }
-  return harvest.blisters.some(({ removed, cut }) => !removed && cut.some((item) => !item));
+  return failure ? failure.active : harvest.blisters.some(({ removed, cut }) => !removed && cut.some((item) => !item));
 }
 
 export function drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion) {
@@ -125,37 +233,13 @@ function drawCase(ctx, closed, scale) {
   ctx.restore();
 }
 
-function drawRupture(ctx, harvest, time, reducedMotion) {
-  const elapsed = reducedMotion ? 1400 : time - harvest.rupture.at;
-  const melt = clamp((elapsed - 280) / 1000);
-  const { x, y } = PEARL_CENTER;
-  drawPearl(ctx, harvest, PEARL_CENTER, 1 - melt);
-  if (melt > 0) {
-    oval(ctx, x + 1, y + 9, 17 * melt, 6 * melt, '#544238', -0.12);
-    oval(ctx, x - 4, y + 7, 7 * melt, 2.2 * melt, '#9b7852', -0.15);
-  }
-  const mist = clamp(elapsed / 700);
-  const glow = (1 - clamp((elapsed - 680) / 1150)) * 0.72;
-  if (glow > 0) {
-    for (let index = 0; index < 7; index++) {
-      const radius = 13 + mist * (13 + index * 2);
-      const px = x + Math.sin(index * 2.2) * (14 + mist * 30);
-      const py = y + Math.cos(index * 1.7) * 19 - mist * (7 + index * 3);
-      oval(ctx, px, py, radius, radius * 0.76,
-        gradient(ctx, px, py, radius, [[0, `rgba(185,195,120,${glow})`], [1, '#a6ac6500']]));
-    }
-  }
-  return !reducedMotion && elapsed < 1850;
-}
-
-export function drawPearlBench(ctx, harvest, gesture, time, reducedMotion) {
+export function drawPearlBench(ctx, harvest, gesture) {
   if (harvest.light) {
     oval(ctx, PEARL_CENTER.x, PEARL_CENTER.y, 106, 90,
       gradient(ctx, PEARL_CENTER.x, PEARL_CENTER.y, 110, [[0, '#fff0b666'], [1, '#ffebaa00']]));
   }
 
   drawCase(ctx, harvest.stage === 'stored', harvest.pearl.scale);
-  if (harvest.rupture) return drawRupture(ctx, harvest, time, reducedMotion);
   const location = harvest.stage === 'stored'
     ? PEARL_CENTER
     : gesture?.preview ?? harvest.pearl.position;
@@ -166,5 +250,4 @@ export function drawPearlBench(ctx, harvest, gesture, time, reducedMotion) {
     span(ctx, point(x - 38, y + 10), point(x - 34, y + 16), '#d8c59eb4', 1.6);
     span(ctx, point(x + 34, y + 4), point(x + 39, y - 2), '#d8c59eb4', 1.6);
   }
-  return false;
 }
