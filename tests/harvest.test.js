@@ -95,7 +95,7 @@ function cleanPearl(harvest) {
 }
 
 test('a fast sweep doses the surface briefly, and wiping thick goop exposes a fresh amber layer', () => {
-  const harvest = createHarvest(COMMON_NODE.seed, 0);
+  const harvest = createHarvest(COMMON_NODE.seed, { undercoatPatch: 0 });
   harvest.stage = 'pearl';
   const spot = pearlPoint(-16, -17);
   const start = pearlPoint(-24, -17);
@@ -156,6 +156,7 @@ test('all three nodes have workable blisters and retain independent pearl and ti
     assert.equal(appraisal.clarity, node.pearl.clarity);
   }
   assert.equal(new Set(NODES.map(({ pearl }) => pearl.diameter)).size, 3);
+  assert.equal(new Set(NODES.map(({ pearl }) => pearl.color)).size, 3);
   assert.ok(NODES.at(-1).timing.slack < COMMON_NODE.timing.slack);
 });
 test('a freed blister follows Grip and is removed only on release outside the opening', () => {
@@ -184,6 +185,7 @@ test('a freed blister follows Grip and is removed only on release outside the op
 
 test('a pristine appraisal requires both spraying and rubbing off the coating', () => {
   const harvest = bench();
+  harvest.pearl.pattern = 16502;
   for (const blister of harvest.blisters) freeBlister(harvest, blister);
   cleanPearl(harvest);
   assert.equal(storeHarvest(harvest), null);
@@ -191,6 +193,7 @@ test('a pristine appraisal requires both spraying and rubbing off the coating', 
   const result = storeHarvest(harvest);
   assert.equal(result.outcome, 'Pristine');
   assert.equal(result.clarity, COMMON_PEARL.clarity);
+  assert.equal(result.pattern, harvest.pearl.pattern);
   assert.deepEqual(harvest.intrinsic, COMMON_PEARL);
   assert.equal(storeHarvest(harvest), result);
 });

@@ -17,7 +17,7 @@ export const COATING_PATCHES = [
   { x: 16, y: 16, radius: 12 }, { x: -1, y: 27, radius: 10 },
 ];
 
-export function createHarvest(seed = COMMON_NODE.seed, undercoatPatch = -1) {
+export function createHarvest(seed = COMMON_NODE.seed, { undercoatPatch = -1, pattern = seed } = {}) {
   const node = nodeFor(seed);
   return {
     seed: node.seed,
@@ -28,7 +28,7 @@ export function createHarvest(seed = COMMON_NODE.seed, undercoatPatch = -1) {
     intrinsic: node.pearl,
     damage: { membrane: 0, scars: [], chipped: false },
     pearl: {
-      rotation: 0, position: PEARL_CENTER, scale: node.pearl.scale,
+      rotation: 0, position: PEARL_CENTER, scale: node.pearl.scale, pattern,
       coating: COATING_PATCHES.map((_, index) => ({
         treatment: 0, amount: 1, undercoat: index === undercoatPatch ? 0.38 : 0,
       })),
@@ -316,6 +316,7 @@ export function storeHarvest(harvest) {
 
   harvest.appraisal = {
     outcome, size: intrinsic.size, diameter: intrinsic.diameter, amberDepth: intrinsic.amberDepth, clarity,
+    pattern: harvest.pearl.pattern,
     observation: observations.join(' ') || 'Clear under the work light.',
   };
   harvest.stage = 'stored';

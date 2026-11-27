@@ -1,28 +1,9 @@
-import { BOARD, clamp, mix, point, randomFrom } from './geometry.js';
-import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, blisterFold, blisterPose, pearlIsClean, readyToLift } from './harvest.js';
+import { gradient, oval, stroke } from './canvas.js';
+import { BOARD, clamp, point } from './geometry.js';
+import { CASE_CENTER, PEARL_CENTER, blisterFold, blisterPose, readyToLift } from './harvest.js';
+import { drawPearl } from './pearl-render.js';
 
 const circle = 2 * Math.PI;
-const pearl = new Path2D('M-31-5C-33-19-17-32-2-31C12-34 26-23 29-10C34 5 25 25 11 28C-2 34-20 28-26 16C-31 9-33 4-31-5Z');
-const goop = new Path2D('M-1 .1C-1.1-.36-.66-.4-.59-.75C-.33-1.16.17-.79.4-.91C.86-.94.77-.46 1-.23C1.08.07.76.26.76.52C.67.97.31.77.09.93C-.21 1.02-.38.63-.62.71C-.97.67-.84.32-1 .1Z');
-
-function stroke(ctx, path, color, width) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.stroke(path);
-}
-
-function gradient(ctx, x, y, radius, stops) {
-  const color = ctx.createRadialGradient(x, y, 1, x, y, radius);
-  for (const [offset, value] of stops) color.addColorStop(offset, value);
-  return color;
-}
-
-function oval(ctx, x, y, width, height, color, angle = 0) {
-  ctx.beginPath();
-  ctx.ellipse(x, y, width, height, angle, 0, circle);
-  ctx.fillStyle = color;
-  ctx.fill();
-}
 
 function span(ctx, a, b, color, width) {
   const line = new Path2D();
@@ -141,87 +122,6 @@ function drawCase(ctx, closed, scale) {
     stroke(ctx, rim, '#a6a585ad', 2);
   }
   span(ctx, point(-8, 48), point(8, 48), '#b6a882', 3);
-  ctx.restore();
-}
-
-const coatingPigments = {
-  highlight: [[190, 154, 88], [161, 233, 204]],
-  body: [[144, 112, 68], [97, 159, 141]],
-  shadow: [[88, 65, 50], [60, 109, 99]],
-};
-
-function coatingColor([amber, green], treatment) {
-  const channels = amber.map((channel, index) => Math.round(mix(channel, green[index], treatment)));
-  return `rgb(${channels.join(' ')})`;
-}
-
-function drawCoating(ctx, coating) {
-  for (const [index, patch] of COATING_PATCHES.entries()) {
-    const { amount, treatment } = coating[index];
-    if (!amount) continue;
-    const treated = treatment === 1;
-    const tint = treated ? 1 : treatment * 0.65;
-    const radius = patch.radius * Math.sqrt(amount);
-    ctx.save();
-    ctx.translate(patch.x, patch.y);
-    ctx.rotate(index * 0.94);
-    ctx.scale(radius, radius);
-    ctx.globalAlpha = Math.min(1, amount * 1.75);
-    const fill = ctx.createLinearGradient(-0.5, -0.7, 0.4, 0.9);
-    fill.addColorStop(0, coatingColor(coatingPigments.highlight, tint));
-    fill.addColorStop(0.52, coatingColor(coatingPigments.body, tint));
-    fill.addColorStop(1, coatingColor(coatingPigments.shadow, tint));
-    ctx.fillStyle = fill;
-    ctx.fill(goop);
-    stroke(ctx, goop, treated ? '#466e63bb' : '#624d35aa', 0.055);
-    const reflection = new Path2D('M-.68-.14C-.45-.55-.11-.39.27-.59');
-    stroke(ctx, reflection, treated ? '#dcf7ddb0' : '#d5bd8289', 0.09);
-    ctx.restore();
-  }
-}
-
-function drawPearl(ctx, harvest, position, scale = 1) {
-  scale *= harvest.pearl.scale;
-  if (scale <= 0.02) return;
-  const { rotation, coating } = harvest.pearl;
-  const { light, damage } = harvest;
-  const { x, y } = position;
-  oval(ctx, x + 3, y + 12 * scale, 33 * scale, 25 * scale, '#242a246d', -0.12);
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.rotate(rotation);
-  const amber = harvest.intrinsic.amberDepth;
-  const litAmber = amber >= 85 ? '#b67c4d' : amber < 70 ? '#84634d' : '#986344';
-  ctx.fillStyle = gradient(ctx, -8, -12, 49, [
-    [0, light ? litAmber : '#655044'], [0.42, '#42302c'], [0.76, '#201c1b'], [1, '#110f12'],
-  ]);
-  ctx.fill(pearl);
-  stroke(ctx, pearl, '#211816', 2.3);
-
-  ctx.save();
-  ctx.clip(pearl);
-  const random = randomFrom(391);
-  for (let index = 0; index < 82; index++) {
-    const x = (random() - 0.5) * 66;
-    const y = (random() - 0.5) * 66;
-    oval(ctx, x, y, 0.6 + random(), 0.44, light ? '#d4945b55' : '#8d766245', random() * circle);
-  }
-  for (const { angle } of damage.scars) {
-    const x = 21 * Math.cos(angle);
-    const y = 21 * Math.sin(angle);
-    oval(ctx, x, y, light ? 15 : 12, 8, gradient(ctx, x, y, 14, [
-      [0, '#e3d2a7a9'], [0.68, '#b9a38b65'], [1, '#c1976800'],
-    ]), angle + Math.PI / 2);
-  }
-  drawCoating(ctx, coating);
-  ctx.restore();
-  ctx.rotate(-rotation);
-  const glint = Math.sin(rotation);
-  ctx.globalAlpha = pearlIsClean(harvest) ? 0.85 + 0.15 * glint : 0.24;
-  oval(ctx, -10 + 4 * glint, -16, light ? 10 : 5.5, light ? 3.8 : 2.1, '#f8e0bfdf', -0.5 + glint * 0.15);
-  oval(ctx, 2 + 3 * glint, -19, 2.0, 1.2, '#f5e2d3aa', -0.4);
   ctx.restore();
 }
 

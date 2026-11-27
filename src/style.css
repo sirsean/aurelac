@@ -198,6 +198,8 @@ h2 { font-size: 2rem; }
 .appraisal h2 { font: 1.55rem Georgia, serif; margin: 0; }
 .appraisal p { margin: 8px 0 0; }
 #appraisal-outcome { font-weight: 750; }
+.appraisal-summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+#appraisal-color { color: var(--muted); }
 .appraisal dl {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -208,7 +210,8 @@ h2 { font-size: 2rem; }
 .appraisal dd { margin: 3px 0 0; font-weight: 680; }
 #next-node { margin-top: 14px; }
 #collection-list { list-style: none; margin: 0; padding: 0; }
-#collection-list li { padding: 12px 0; border-top: 1px solid #c0b69d; }
+#collection-list li { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid #c0b69d; }
+#collection-list canvas { flex: none; width: 48px; height: 48px; border-radius: 7px; background: #dfd8c6; }
 #collection-list li p { margin: 5px 0 0; color: var(--muted); }
 
 dialog {

@@ -63,7 +63,7 @@ test('a versioned save restores the selected node, damage, tool wear and phase o
   specimen.attachments[1].tearAt = point(180, 190);
   specimen.attachments[1].state = 'torn';
   specimen.nicks.push(point(175, 145));
-  const harvest = createHarvest(391);
+  const harvest = createHarvest(391, { pattern: 31175 });
   openBlisters(harvest, specimen, 430);
   harvest.blisters[0].cut[0] = true;
   harvest.blisters[0].acid = 12;
@@ -85,6 +85,7 @@ test('a versioned save restores the selected node, damage, tool wear and phase o
   assert.deepEqual(resumed.harvest.damage.scars, harvest.damage.scars);
   assert.deepEqual(resumed.harvest.pearl.coating[0], { amount: 0.5, treatment: 1, undercoat: 0 });
   assert.deepEqual(resumed.harvest.pearl.coating[1], harvest.pearl.coating[1]);
+  assert.equal(resumed.harvest.pearl.pattern, 31175);
   assert.deepEqual(blisterPose(resumed.harvest.blisters[0], 50), blisterPose(harvest.blisters[0], 1500));
   assert.equal(resumed.blade.wear, 0.71);
 });

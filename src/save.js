@@ -50,6 +50,7 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   specimen.wetnessTime += shift;
   dryMembrane(specimen, clock);
   harvest.intrinsic = node.pearl;
+  harvest.pearl.pattern ??= node.seed;
   for (const coating of harvest.pearl.coating) {
     coating.treatment ??= coating.treated ? 1 : 0;
     coating.undercoat ??= 0;

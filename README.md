@@ -19,7 +19,7 @@ While the dev or preview server is running, use `npm run test:browser` to exerci
 
 - The incision lips and tools use the same tray coordinates, seam samples, ordered attachments, and tuning. [geometry.js](src/geometry.js)
 - Cut, wetness, peel, and tear are derived from input positions. Specimen data is independent of browser state and rendering. [specimen.js](src/specimen.js)
-- Blister timing, fold geometry, coating, placement, and appraisal live in the harvest model. Its renderer uses the same folds and coating patches and rotates local damage with the clean pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js)
+- Blister timing, fold geometry, coating, placement, and appraisal live in the harvest model. The renderers use the same fold and coating geometry, and rotate local damage with the clean pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js) · [pearl-render.js](src/pearl-render.js)
 - The renderer clips deeper tissue to the opening and animates recoil. Append `?debug=1` to see opening width, hit regions, and pull load. [render.js](src/render.js)
 - Curated specimen geometry, intrinsic pearl properties, and blister timing live in node profiles. Blade wear is shared across harvests. The save module restores the active bench and appends one collection record per successful run. [nodes.js](src/nodes.js) · [blade.js](src/blade.js) · [save.js](src/save.js)
 - The browser controller handles tool selection, pointer capture, cancellation, resizing, and the field guide. It maps CSS pixels to the tray, even when a finger moves past the canvas. [main.js](src/main.js)
@@ -64,6 +64,8 @@ Chromium 156 completed pristine, flawed, and ruined harvests on BG–107. Checks
 ## Specimens and repeat harvests
 
 Select the broad, small, or rare node at the top of the tray. Shape, pearl size, intrinsic amber and clarity, and blister placement vary by node. The rare node has a shorter settled window and a subtler fold. The starting properties determine pearl size and amber depth. Handling and damage affect the clarity appraisal.
+
+The broad node yields honey amber, the small node cloud white, and the rare node smoky violet. Inclusions vary by harvest. The Work light brings out the color within the stone, and reflections shift across its faces as it rolls. The collection uses the same pearl art. The rounded shapes, cloudy translucency, and amber inclusions draw on the film's practical props. [Aurelac case trailer still and prop photos](https://sionnachstudios.com/prospect-behind-the-scenes-part-one-aurelac-case/)
 
 The Blade gradually dulls through repeated cuts. When the husk starts to bunch, select Stone and draw the blade back and forth on it. Reloading the bench preserves the incision, damage, harvest stage, and blade condition. The membrane continues drying while the bench is closed. Collection lists stored pearls in the current browser, including their source node and appraisal. Ruined pearls appear in the loss appraisal.
 

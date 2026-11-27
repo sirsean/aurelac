@@ -147,6 +147,7 @@ async function expectIntact(page) {
 async function expectCollection(page, count) {
   await page.getByRole('button', { name: 'Collection', exact: true }).click();
   assert.equal(await page.locator('#collection-list li').count(), count);
+  assert.equal(await page.locator('#collection-list li canvas').count(), count);
   await page.locator('#collection').getByRole('button', { name: 'Close' }).click();
 }
 
@@ -296,6 +297,7 @@ async function harvestPearl(page, strokes, opened, outcome) {
   await expectStatus(page, 'sits flat');
   await page.getByRole('button', { name: 'Close case' }).click();
   assert.equal(await page.locator('#appraisal-outcome').textContent(), outcome);
+  assert.equal(await page.locator('#appraisal-color').textContent(), 'Honey amber');
   if (outcome === 'Flawed') assert.match(await page.locator('#appraisal-observation').textContent(), /Acid clouding/);
 }
 

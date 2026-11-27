@@ -10,6 +10,7 @@ import { beginSharpening, bladeDrag, createBlade, sharpenBlade } from './blade.j
 import { collectedPearls, loadWorkbench, recordPearl, saveWorkbench } from './save.js';
 import { createRenderer } from './render.js';
 import { createFeedback } from './feedback.js';
+import { drawPearlThumbnail, pearlColorName } from './pearl-render.js';
 
 const params = new URLSearchParams(location.search);
 const playtest = ['starter', 'intact'].includes(params.get('playtest'));
@@ -196,7 +197,8 @@ function startNode(seed) {
   const node = nodeFor(seed);
   specimen = createSpecimen({ seed: node.seed });
   const undercoatPatch = Math.random() < 1 / 3 ? Math.floor(Math.random() * COATING_PATCHES.length) : -1;
-  harvest = createHarvest(node.seed, undercoatPatch);
+  const pattern = Math.floor(Math.random() * 0x100000000);
+  harvest = createHarvest(node.seed, { undercoatPatch, pattern });
   runId = crypto.randomUUID();
   tool = 'blade';
   feedback.textContent = 'The specimen is intact.';
@@ -377,6 +379,8 @@ lightButton.addEventListener('click', () => {
 });
 function showAppraisal(appraisal) {
   document.querySelector('#appraisal-outcome').textContent = appraisal.outcome;
+  document.querySelector('#appraisal-color').textContent = appraisal.outcome === 'Ruined'
+    ? '' : pearlColorName(harvest.intrinsic);
   document.querySelector('#appraisal-size').textContent = `${appraisal.size} · ${appraisal.diameter} mm`;
   document.querySelector('#appraisal-amber').textContent = `${appraisal.amberDepth} / 100`;
   document.querySelector('#appraisal-clarity').textContent = `${appraisal.clarity} / 100`;
@@ -404,12 +408,19 @@ document.querySelector('#open-collection').addEventListener('click', () => {
     ? `${entries.length} root ${entries.length === 1 ? 'pearl' : 'pearls'}`
     : 'Harvest and store a root pearl to add it to your collection.';
   const items = entries.map(({ seed, appraisal }) => {
+    const node = nodeFor(seed);
     const item = document.createElement('li');
+    const thumbnail = document.createElement('canvas');
+    thumbnail.width = thumbnail.height = 96;
+    thumbnail.setAttribute('aria-hidden', 'true');
+    drawPearlThumbnail(thumbnail, node.pearl, appraisal.pattern ?? node.seed);
+    const description = document.createElement('div');
     const title = document.createElement('strong');
     const detail = document.createElement('p');
-    title.textContent = `${nodeFor(seed).name} · ${nodeCode(seed)}`;
+    title.textContent = `${pearlColorName(node.pearl)} · ${nodeCode(seed)}`;
     detail.textContent = `${appraisal.outcome} · ${appraisal.diameter} mm · Amber ${appraisal.amberDepth} · Clarity ${appraisal.clarity}`;
-    item.append(title, detail);
+    description.append(title, detail);
+    item.append(thumbnail, description);
     return item;
   });
   document.querySelector('#collection-list').replaceChildren(...items);
