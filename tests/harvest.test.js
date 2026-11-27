@@ -281,11 +281,31 @@ test('forcing a swollen seam can ruin the root pearl and records the tray loss',
   assert.equal(harvest.appraisal.clarity, 0);
 });
 
+test('a rare fold gives a committed cut a brief finish window', () => {
+  const harvest = bench(391);
+  const blister = harvest.blisters[0];
+  const closes = openedAt + blister.timing.slack;
+  const start = blisterFold(blister, 0);
+  const end = blisterFold(blister, 1);
+  const { event, gesture } = stroke(harvest, 'blade', start, blisterFold(blister, 0.51), closes - 20);
+  assert.equal(event, 'cut-part');
+  assert.equal(blisterPose(blister, closes + 75).settled, false);
+  assert.equal(moveHarvestGesture(harvest, gesture, end, closes + 75), 'blister-cut');
+  assert.equal(blister.acid, 0);
+
+  const newStroke = bench(391);
+  const miss = stroke(newStroke, 'blade', start, end, closes + 75);
+  assert.equal(miss.event, 'acid-nick');
+  assert.equal(newStroke.blisters[0].cut.some(Boolean), false);
+});
+
 test('the case can be re-seated or closed on the rim with a chip penalty', () => {
   const harvest = bench();
   for (const blister of harvest.blisters) freeBlister(harvest, blister);
   const rim = point(CASE_CENTER.x + 26, CASE_CENTER.y);
-  assert.equal(place(harvest, PEARL_CENTER, rim), 'rim');
+  const edgeGrip = point(PEARL_CENTER.x + 12, PEARL_CENTER.y - 4);
+  assert.equal(place(harvest, edgeGrip, point(rim.x + 12, rim.y - 4)), 'rim');
+  assert.deepEqual(harvest.pearl.position, rim);
   assert.equal(place(harvest, rim, CASE_CENTER), 'seated');
   assert.equal(place(harvest, CASE_CENTER, rim), 'rim');
   const result = storeHarvest(harvest);

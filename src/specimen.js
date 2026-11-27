@@ -136,11 +136,13 @@ function catchAt(specimen, index, aligned) {
   if (!aligned) return { cause: 'angle', point: base };
   const range = openingAt(specimen.cut, base.seamT);
   if (!range || range.width < LOBE_WIDTH - 0.01) {
-    const blockedEnd = base.direction.x > 0 ? 0.18 : 0.82;
+    const blockedEnd = base.direction.x > 0 ? 0.82 : 0.18;
     const lip = range
       ? Math.round(range.start + blockedEnd * (range.end - range.start))
       : Math.round(base.seamT * TUNING.seamSegments);
-    return { cause: 'husk', point: range ? openingLip(seam, range, lip, 1) : offset(seam[lip], 3) };
+    const { normal } = seam[lip];
+    const side = Math.sign(normal.x * base.direction.x + normal.y * base.direction.y) || 1;
+    return { cause: 'husk', point: range ? openingLip(seam, range, lip, side) : offset(seam[lip], side * 3) };
   }
   if (specimen.attachments[index].wetness < TUNING.minimumWetness) {
     return { cause: 'dry', point: base };
@@ -228,8 +230,13 @@ export function moveGesture(specimen, gesture, location, time = 0) {
   const travel = distance(start, location);
   if (travel === 0) return null;
   let nextContact = gesture.travelUntilContact;
-  gesture.bunch = gesture.tool === 'blade' && gesture.drag > 0 && nextContact > Math.max(travel, TUNING.contactStep)
-    && closestSeam(layoutFor(specimen).seam, location).gap < TUNING.bladeRadius ? gesture.drag : 0;
+  if (gesture.tool === 'blade' && gesture.drag > 0) {
+    const { index, sample, gap } = closestSeam(layoutFor(specimen).seam, location);
+    const leading = Math.sign((location.x - start.x) * sample.normal.y - (location.y - start.y) * sample.normal.x);
+    const ahead = index + leading;
+    gesture.bunch = gap <= TUNING.bladeRadius && specimen.cut[ahead] === false ? gesture.drag : 0;
+    gesture.bunchDirection = leading || 1;
+  }
   let event = null;
   while (nextContact <= travel) {
     const sample = between(start, location, nextContact / travel);

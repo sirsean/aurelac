@@ -46,13 +46,14 @@ function drawFaces(ctx, style, rotation, light) {
     const sheen = ctx.createLinearGradient(x, y, 0, 0);
     sheen.addColorStop(0, style.flash);
     sheen.addColorStop(1, style.shell[1]);
-    ctx.fillStyle = reflection > 0.4 ? sheen : style.ink;
-    ctx.globalAlpha = style.facets * (0.1 + (light ? 0.48 : 0.35) * shine);
+    ctx.fillStyle = style.ink;
+    ctx.globalAlpha = style.facets * 0.30 * (1 - reflection);
     ctx.fill(path);
-    if (reflection > 0.62) {
-      ctx.globalAlpha *= 0.7;
-      stroke(ctx, path, style.flash, 0.75);
-    }
+    ctx.fillStyle = sheen;
+    ctx.globalAlpha = style.facets * (light ? 0.62 : 0.39) * shine;
+    ctx.fill(path);
+    ctx.globalAlpha *= shine * 0.7;
+    stroke(ctx, path, style.flash, 0.75);
   }
   ctx.globalAlpha = 1;
 }
@@ -147,10 +148,13 @@ function drawCrystal(ctx, position, { color, pattern, rotation, scale, light, co
   for (const { angle } of scars) {
     const x = 21 * Math.cos(angle);
     const y = 21 * Math.sin(angle);
+    const facesLight = (1 + Math.cos(angle - lamp)) / 2;
+    ctx.globalAlpha = light ? mix(0.62, 1, facesLight) : 0.70;
     oval(ctx, x, y, light ? 15 : 12, 8, gradient(ctx, x, y, 14, [
       [0, '#f5e5b7bf'], [0.68, '#cab98c80'], [1, '#c1976800'],
     ]), angle + Math.PI / 2);
   }
+  ctx.globalAlpha = 1;
   if (coating) drawCoating(ctx, coating, stripped);
   if (melt) {
     ctx.fillStyle = `rgba(52, 36, 26, ${0.86 * melt})`;
@@ -159,10 +163,15 @@ function drawCrystal(ctx, position, { color, pattern, rotation, scale, light, co
 
   ctx.rotate(-rotation);
   const sweep = Math.sin(rotation);
+  const xGlint = -11 + 8 * sweep;
+  const yGlint = -17 - 2 * Math.cos(rotation);
+  const glintAngle = Math.atan2(yGlint, xGlint) - rotation;
+  const haze = scars.reduce((amount, { angle }) => Math.max(amount,
+    Math.max(0, Math.cos(angle - glintAngle)) ** 8), 0);
   const coverage = coating ? coating.reduce((total, { amount }) => total + amount, 0) / coating.length : 0;
-  ctx.globalAlpha = (light ? 0.9 : 0.68) * (1 - melt) * (1 - 0.84 * coverage * (1 - stripped));
-  oval(ctx, -12 + 4 * sweep, -17, light ? 8.4 : 5.2, light ? 2.15 : 1.45, style.flash, -0.55 + sweep * 0.19);
-  oval(ctx, -2 + 4 * sweep, -21, 2.0, 1.1, style.flash, -0.45);
+  ctx.globalAlpha = (light ? 0.9 : 0.68) * (1 - melt) * (1 - 0.64 * haze) * (1 - 0.84 * coverage * (1 - stripped));
+  oval(ctx, xGlint, yGlint, light ? 8.4 : 5.2, light ? 2.15 : 1.45, style.flash, -0.55 + sweep * 0.19);
+  oval(ctx, xGlint + 10, yGlint - 4, 2.0, 1.1, style.flash, -0.45);
   ctx.restore();
 }
 

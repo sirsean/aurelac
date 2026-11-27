@@ -1,6 +1,6 @@
 import { gradient, oval, stroke } from './canvas.js';
 import { BOARD, between, clamp, distance, mix, point } from './geometry.js';
-import { CASE_CENTER, PEARL_CENTER, RUPTURE_DURATION, blisterFold, blisterPose, readyToLift } from './harvest.js';
+import { CASE_CENTER, PEARL_CENTER, RUPTURE_DURATION, blisterFold, blisterPose, casePlacement, readyToLift } from './harvest.js';
 import { drawPearl } from './pearl-render.js';
 
 const circle = 2 * Math.PI;
@@ -14,11 +14,12 @@ function span(ctx, a, b, color, width) {
 
 function drawBlister(ctx, blister, time, reducedMotion, detached = false) {
   const { center, cut, acid, axis } = blister;
-  const { settled, swell } = blisterPose(blister, time);
+  const { settled, swell, slackLeft } = blisterPose(blister, time);
   const open = readyToLift(blister);
-  const motion = reducedMotion || open ? 0 : swell * 3;
-  const length = 17 + motion;
-  const width = 12 + motion;
+  const pressure = reducedMotion || open || detached ? 0 : swell;
+  const slack = settled ? mix(0.52, 1, clamp(slackLeft / 155)) : 0;
+  const length = 17 + pressure * 3.1;
+  const width = 12 + pressure * 4.5;
   const angle = Math.atan2(axis.y, axis.x);
   oval(ctx, center.x + (open ? 3 : 1), center.y + 3, length + 1, width + 1, '#352421aa', angle);
   const color = gradient(ctx, center.x - 5, center.y - 8, 27, [
@@ -30,15 +31,20 @@ function drawBlister(ctx, blister, time, reducedMotion, detached = false) {
   ridge.quadraticCurveTo(center.x - 7, center.y - 11, center.x + 3, center.y - 9);
   stroke(ctx, ridge, '#ffe0a7a8', 1.4);
 
+  if (!settled && !open && !detached) {
+    span(ctx, blisterFold(blister, 0.06), blisterFold(blister, 0.94), '#7b4937b6', 1.15);
+  }
+
   for (let index = 0; index < cut.length && !detached; index++) {
     const start = blisterFold(blister, index / cut.length);
     const end = blisterFold(blister, (index + 1) / cut.length);
     if (!settled && !cut[index]) continue;
-    span(ctx, start, end, '#412a26', cut[index] ? 4.1 : 1.7);
+    span(ctx, start, end, '#412a26', cut[index] ? 4.1 : 1.35 + slack * 1.55);
     const previousAlpha = ctx.globalAlpha;
-    if (!cut[index]) ctx.globalAlpha *= blister.foldContrast;
-    span(ctx, point(start.x + axis.y * 1.8, start.y - axis.x * 1.8),
-      point(end.x + axis.y * 1.8, end.y - axis.x * 1.8), cut[index] ? '#efbc85' : '#f7dbac', 1.3);
+    if (!cut[index]) ctx.globalAlpha *= blister.foldContrast * slack;
+    const lip = cut[index] ? 1.8 : 1.1 + slack * 1.9;
+    span(ctx, point(start.x + axis.y * lip, start.y - axis.x * lip),
+      point(end.x + axis.y * lip, end.y - axis.x * lip), cut[index] ? '#efbc85' : '#fff0c7', 1.25 + slack * 0.8);
     ctx.globalAlpha = previousAlpha;
   }
   if (acid >= 10) {
@@ -201,7 +207,7 @@ export function drawLiftedBlisters(ctx, harvest, gesture, time, reducedMotion) {
   }
 }
 
-function drawCase(ctx, closed, scale) {
+function drawCase(ctx, closed, scale, supported) {
   const { x, y } = CASE_CENTER;
   ctx.save();
   ctx.translate(x, y);
@@ -222,12 +228,12 @@ function drawCase(ctx, closed, scale) {
   stroke(ctx, inset, '#9a9b7a', 1.2);
   if (!closed) {
     const recess = Math.max(27, 32 * scale);
-    oval(ctx, 0, 0, recess, recess, gradient(ctx, -3, -10, 55, [
-      [0, '#242b25'], [0.6, '#323c31'], [1, '#82906d'],
+    oval(ctx, 0, supported ? 1 : 0, recess, recess, gradient(ctx, -3, -10, 55, [
+      [0, supported ? '#191e1a' : '#242b25'], [0.6, '#323c31'], [1, '#82906d'],
     ]));
     const rim = new Path2D();
     rim.arc(0, 0, recess + 2, 0, circle);
-    stroke(ctx, rim, '#a6a585ad', 2);
+    stroke(ctx, rim, supported ? '#d0c39c' : '#a6a585ad', supported ? 2.3 : 2);
   }
   span(ctx, point(-8, 48), point(8, 48), '#b6a882', 3);
   ctx.restore();
@@ -239,10 +245,11 @@ export function drawPearlBench(ctx, harvest, gesture) {
       gradient(ctx, PEARL_CENTER.x, PEARL_CENTER.y, 110, [[0, '#fff0b666'], [1, '#ffebaa00']]));
   }
 
-  drawCase(ctx, harvest.stage === 'stored', harvest.pearl.scale);
-  const location = harvest.stage === 'stored'
-    ? PEARL_CENTER
-    : gesture?.preview ?? harvest.pearl.position;
+  const held = gesture?.tool === 'case' ? gesture.preview : null;
+  const supported = held ? casePlacement(held) === 'seated' : harvest.placement === 'seated';
+  drawCase(ctx, harvest.stage === 'stored', harvest.pearl.scale, supported);
+  const location = harvest.stage === 'stored' ? PEARL_CENTER
+    : held && supported ? between(held, CASE_CENTER, 0.78) : held ?? harvest.pearl.position;
   drawPearl(ctx, harvest, location);
 
   if (harvest.stage === 'pearl' && harvest.placement === 'rim' && !gesture?.preview) {

@@ -13,9 +13,10 @@ import { createFeedback, createFeedbackSettings } from './feedback.js';
 import { drawPearlThumbnail, pearlColorName } from './pearl-render.js';
 
 const params = new URLSearchParams(location.search);
-const playtest = ['starter', 'intact'].includes(params.get('playtest'));
+const playtest = params.get('playtest');
+const catchDrill = playtest === 'catch';
 const debug = params.get('debug') === '1';
-if (playtest) document.documentElement.classList.add('playtest');
+if (['starter', 'intact', 'catch'].includes(playtest)) document.documentElement.classList.add('playtest');
 
 const canvas = document.querySelector('#specimen');
 const feedback = document.querySelector('#feedback');
@@ -48,15 +49,17 @@ let anchor = null;
 let frame = null;
 let dryingTimer = null;
 let storage = null;
-try { storage = window.localStorage; } catch { /* The bench also runs without browser storage. */ }
+try { if (!catchDrill) storage = window.localStorage; } catch { /* The bench also runs without browser storage. */ }
 const pearls = new Map();
 
 const materialCues = {
   cut: 'cut', 'blade-drag': 'drag', nick: 'tear', wet: 'spray',
   peeled: 'release', piece: 'release', tear: 'tear', 'dry-tear': 'tear', 'reverse-tear': 'tear',
-  'cut-part': 'cut', 'blister-cut': 'cut', 'acid-nick': 'tear', rupture: 'rupture',
-  'blister-lifted': 'release', 'pearl-revealed': 'release', seated: 'case', rim: 'case',
+  'cut-part': 'fold', 'blister-cut': 'fold', 'acid-nick': 'tear', rupture: 'rupture',
+  'blister-lifted': 'release', 'pearl-revealed': 'release', seated: 'case', rim: 'rim',
+  'coating-wiped': 'wipe', 'pearl-clean': 'wipe',
 };
+const toolChanges = new Set(['pearl-revealed', 'pearl-clean', 'seated', 'rim', 'tray', 'rupture']);
 
 const messages = {
   cut: 'Pink tissue is exposed. Sweep it with the diffuser.',
@@ -164,6 +167,7 @@ function updateTool(time) {
   canvas.setAttribute('aria-label', benchDescriptions[harvest.rupture ? 'ruined' : harvest.stage]);
   bladeFlat.setAttribute('opacity', String(bladeDrag(blade)));
   nodeSelect.value = String(specimen.seed);
+  nodeSelect.disabled = catchDrill;
   nodeId.textContent = nodeCode(specimen.seed);
   tray.hidden = canRecord || Object.keys(options).length === 0;
   for (const button of tools) {
@@ -205,14 +209,19 @@ function finishGesture() {
 function startNode(seed) {
   finishGesture();
   const node = nodeFor(seed);
-  const layoutSeed = Math.floor(Math.random() * 0x100000000);
+  const layoutSeed = catchDrill ? undefined : Math.floor(Math.random() * 0x100000000);
   specimen = createSpecimen({ seed: node.seed, layoutSeed });
+  if (catchDrill) {
+    specimen.cut.fill(true, 22, 44);
+    specimen.attachments.slice(0, TUNING.attachmentsPerSection).forEach((item) => { item.wetness = 1; });
+    specimen.wetnessTime = performance.now();
+  }
   const undercoatPatch = Math.random() < 1 / 3 ? Math.floor(Math.random() * COATING_PATCHES.length) : -1;
   const pattern = Math.floor(Math.random() * 0x100000000);
   harvest = createHarvest(node.seed, { undercoatPatch, pattern });
   runId = crypto.randomUUID();
-  tool = 'blade';
-  feedback.textContent = 'The specimen is intact.';
+  tool = catchDrill ? 'grip' : 'blade';
+  feedback.textContent = catchDrill ? messages.soaked : 'The specimen is intact.';
   note.textContent = toolHints[harvest.stage][tool];
   renderer.clearMotion();
   updateTool();
@@ -295,13 +304,14 @@ function reportHarvestInteraction(result) {
   if (materialCues[result]) effects.play(materialCues[result]);
   report(result === 'rupture' && lossReady() ? messages.loss : messages[result]);
   if (result === 'rupture') finishGesture();
-  updateTool();
+  if (toolChanges.has(result)) updateTool();
 }
 
 function reportInteraction(result, time) {
   const pull = gesture.pull;
   const caught = !gesture.finished && pull?.catch && pull.load >= 0.14;
-  if (materialCues[result]) effects.play(materialCues[result]);
+  if (result === 'cut' && gesture.bunch > 0.18) effects.play('drag');
+  else if (materialCues[result]) effects.play(materialCues[result]);
   else if (caught && !gesture.caught) effects.play('drag');
   gesture.caught = Boolean(caught);
   if (result === 'peeled' || result === 'piece') {
@@ -366,12 +376,19 @@ function selectTool(next) {
 }
 
 function onBenchPress(button, press) {
-  button.addEventListener('click', press);
+  let touchRelease = -Infinity;
+  button.addEventListener('click', (event) => {
+    const touchClick = event.pointerType ? event.pointerType === 'touch' : event.detail > 0;
+    if (!touchClick || event.timeStamp - touchRelease > 500) press();
+  });
   button.addEventListener('pointerup', (event) => {
     // Chromium can suppress the synthetic click when a tap follows a quick swipe.
     if (event.pointerType !== 'touch' || !event.isPrimary || button.disabled) return;
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (button.contains(target)) press();
+    if (button.contains(target)) {
+      touchRelease = event.timeStamp;
+      press();
+    }
   });
 }
 
@@ -380,7 +397,7 @@ for (const button of tools) onBenchPress(button, () => selectTool(button.dataset
 nodeSelect.addEventListener('change', () => startNode(Number(nodeSelect.value)));
 document.querySelector('#reset').addEventListener('click', () => startNode(specimen.seed));
 document.querySelector('#next-node').addEventListener('click', () => startNode(specimen.seed));
-lightButton.addEventListener('click', () => {
+onBenchPress(lightButton, () => {
   harvest.light = !harvest.light;
   if (harvest.light && !pearlIsClean(harvest)) {
     report('The work light shows coating still on the pearl.');

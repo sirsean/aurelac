@@ -35,15 +35,16 @@ Authenticate Wrangler with access to Workers and Custom Domains on `sirsean.me`.
 - `peel-prototype` uses `peel-prototype.aurelac.sirsean.me`.
 - `complete-harvest` uses `complete-harvest.aurelac.sirsean.me`.
 - `specimens-and-collection` uses `specimens-and-collection.aurelac.sirsean.me`.
+- `workbench-tuning` uses `workbench-tuning.aurelac.sirsean.me`.
 - Other branches use the same preview scheme. Names that need normalization get a stable hash suffix so similarly named branches deploy independently.
 
 Cloudflare manages DNS and certificates for these exact Worker Custom Domains. Deployments are explicit.
 
 ## Prototype playtest
 
-Run `/?playtest=intact` on a portrait phone with first-time players. The standard bench and the caption-free playtest both start with a closed husk and Blade selected. The earlier `/?playtest=starter` link opens the same caption-free bench. Ask, “Can you expose the orange lobe without leaving pink tissue behind?” Record how they find the crease, where they think the flap catches, what they try next, and whether they recover without prompting. Show a clean section and a tear separately and ask which left tissue behind.
+Run `/?playtest=catch` on a portrait phone with first-time players. It opens the same short incision and wet curl for everyone, with Grip selected and captions hidden. Tap Reset node just before handing over the phone. Ask, “Can you expose the orange lobe without leaving pink tissue behind?” Record what they think is holding the flap and whether they extend or rewet the opening unaided. This scenario uses temporary progress. Use `/?playtest=intact` for the separate closed-husk check and note how they find the crease. The earlier `/?playtest=starter` link opens the same caption-free intact bench.
 
-Reset restores the closed specimen in either mode. The proposed gate is at least three uncoached recoveries among five new players. Record device, viewport, whether they used one or two fingers, and any missed grab. When players recognize the lip but miss the flap, adjust the grip target. When they miss the lip itself, adjust the pose and silhouette.
+The proposed gate is at least three uncoached recoveries among five new players. Record device, browser, whether they used one or two fingers, and any missed grab. Show a clean section and a tear separately and ask which left tissue behind.
 
 ### Verification on 2026-11-26
 
@@ -75,4 +76,17 @@ The Blade gradually dulls through repeated cuts. When the husk starts to bunch, 
 
 Sound and Haptics start on when no preference is saved. Toggle them independently in the Field guide. The bench remembers both choices in the current browser, and vibration is available on supported devices.
 
-On a fresh phone browser, ask first-time and practiced players to try the broad node and then the rare node. Listen for what tells them a fold is ready and whether they recognize a missed cut. After repeat harvests, observe whether they notice blade drag and choose Stone, and whether they can connect any appraisal flaw to the handling that caused it. Compare one-handed and two-finger runs. Physical-phone and fresh-player observations are pending.
+### Workbench tuning playtest
+
+1. Have players complete a broad-node harvest on the standard bench. Ask what signaled readiness for the next tool. If they get a flawed appraisal, have them point to the action that caused it.
+2. Once they know the tools, give them a rare node. Ask what changed in the fold just before the cut and what they would do after a missed cut. Watch for repeated strokes on swollen tissue, difficulty seating the pearl, or trouble reaching tools.
+3. Compare one-handed and two-finger peels on a small and a larger phone. Try one run with Sound and Haptics on and one with both off. Swap the order between players. Ask which cues they could distinguish by touch or sound and which cues they still noticed with feedback off.
+4. After repeat harvests, observe when players first notice blade drag, whether they choose Stone on their own, and whether the same damaged specimen still feels playable after sharpening.
+
+Record the device, browser, feedback settings, node, first missed or repeated action, and what the player tried next. Physical-phone and fresh-player observations are pending.
+
+### Workbench checks on 2026-11-27
+
+Chromium 156 verified the caught-peel recovery, one- and two-finger releases, blade drag and sharpening, pristine and damaged appraisals, and feedback toggles at desktop and phone widths. A separate 320 × 640 touch run cut all five rare blisters with sound and haptics off, inspected the pearl, and recovered a rim placement before closing the case on a pristine 27 mm pearl.
+
+All 288 simulated peels finished cleanly with the same moderate input at 30, 60, and 120 samples per second, with and without pinning. One 90-frame Chromium sample at 375 px wide, device pixel ratio 3, and 4× CPU throttling measured five frames over 20 ms before caching the membrane grain and zero after. These checks used browser emulation.

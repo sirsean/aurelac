@@ -150,6 +150,17 @@ async function checkFit(page) {
   for (const tool of await page.locator('[data-tool]:visible').all()) {
     const box = await tool.boundingBox();
     assert.ok(box.height >= 44 && box.width >= 44);
+    const fits = await tool.evaluate((button) => {
+      const bounds = button.getBoundingClientRect();
+      return [...button.childNodes].filter((child) => child.nodeType === Node.ELEMENT_NODE || child.textContent.trim())
+        .every((child) => {
+          const range = document.createRange();
+          range.selectNode(child);
+          const rect = range.getBoundingClientRect();
+          return rect.left >= bounds.left - 0.5 && rect.right <= bounds.right + 0.5;
+        });
+    });
+    assert.ok(fits, `Tool contents fit ${viewport.width}px wide`);
   }
 }
 
@@ -313,7 +324,7 @@ async function harvestPearl(page, strokes, opened, outcome) {
   await expectStatus(page, 'The pearl is clean');
   await screenshot(page, `${outcome.toLowerCase()}-wiped-pearl`);
   await selectTool(page, 'Case');
-  await drag(page, PEARL_CENTER, CASE_CENTER);
+  await drag(page, pearlPoint(8, -5), { x: CASE_CENTER.x + 8, y: CASE_CENTER.y - 5 });
   await expectStatus(page, 'sits flat');
   await page.getByRole('button', { name: 'Close case' }).click();
   assert.equal(await page.locator('#appraisal-outcome').textContent(), outcome);
@@ -465,7 +476,20 @@ try {
     await swipe(wetSweep);
     await expectStatus(touch, 'fold is glossy');
     await selectTool(touch, 'Grip', 'touch');
-    await swipe([handle(index), target(24, index), target(53, index)], finishedSection(index));
+    if (index === 0) {
+      const pull = await boardPoint(touch, handle());
+      const steady = { ...(await boardPoint(touch, { x: 256, y: 259 })), id: 2 };
+      await send('touchStart', [{ ...pull, id: 1 }]);
+      await send('touchStart', [{ ...pull, id: 1 }, steady]);
+      for (const length of [16, 34, 52]) {
+        const contact = await boardPoint(touch, target(length));
+        await send('touchMove', [{ ...contact, id: 1 }, steady]);
+      }
+      await expectStatus(touch, finishedSection(index));
+      await send('touchEnd', []);
+    } else {
+      await swipe([handle(index), target(24, index), target(53, index)], finishedSection(index));
+    }
   }
   const touchOpening = await touch.evaluate(() => performance.now());
   await expectCleanLobe(touch);
@@ -626,6 +650,24 @@ try {
   assert.notDeepEqual(layoutFor(next).anchors, anchors);
   await screenshot(replay, 'touch-generated-next-crease');
   assert.deepEqual(replayErrors, []);
+
+  const catchBench = await browser.newPage({ viewport: { width: 390, height: 812 } });
+  const catchErrors = await setUp(catchBench, '/?playtest=catch', true);
+  await expectStatus(catchBench, 'fold is glossy');
+  assert.ok(await catchBench.getByRole('button', { name: 'Field guide' }).isHidden());
+  await startPeel(catchBench, 51);
+  await expectStatus(catchBench, 'caught on the husk');
+  await catchBench.mouse.up();
+  await selectTool(catchBench, 'Blade');
+  await trace(catchBench, 0.64, 0.95);
+  await selectTool(catchBench, 'Diffuser');
+  await trace(catchBench, 0.33, 0.69, pinkSurface);
+  await selectTool(catchBench, 'Grip');
+  await startPeel(catchBench, 54);
+  await expectStatus(catchBench, 'One section came free');
+  await catchBench.mouse.up();
+  assert.equal(await catchBench.evaluate(() => localStorage.getItem('aurelac.workbench.v1')), null);
+  assert.deepEqual(catchErrors, []);
   console.log(`Passed generated touch anatomy, original harvest regressions, reload, collection, sharpening and feedback in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();

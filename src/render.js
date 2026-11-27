@@ -232,7 +232,19 @@ function createLobeLayer() {
   return layer;
 }
 
-function drawMembrane(ctx, specimen, pose) {
+function createMembraneGrain() {
+  const layer = document.createElement('canvas');
+  layer.width = BOARD.width * 2;
+  layer.height = BOARD.height * 2;
+  const ctx = layer.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.lineCap = 'round';
+  patina(ctx, randomFrom(1578), 430, ['#6c403a47', '#fed0bd75', '#ecafa88f'],
+    { x: 65, y: 80, width: 285, height: 220 });
+  return layer;
+}
+
+function drawMembrane(ctx, specimen, pose, grain) {
   const front = peelFront(specimen);
   if (front < 0) return;
 
@@ -256,9 +268,7 @@ function drawMembrane(ctx, specimen, pose) {
   fill(ctx, cover, radial(ctx, 179, 137, 199, materials.membrane));
   ctx.save();
   ctx.clip(cover);
-  const random = randomFrom(1578);
-  patina(ctx, random, 430, ['#6c403a47', '#fed0bd75', '#ecafa88f'],
-    { x: 65, y: 80, width: 285, height: 220 });
+  ctx.drawImage(grain, 0, 0, BOARD.width, BOARD.height);
   const stretch = distanceSquared(target, unstretched);
   for (let index = 0; index < 10; index++) {
     const width = index * 19;
@@ -423,9 +433,11 @@ function drawFlap(ctx, specimen, ranges, pose) {
   ctx.restore();
 
   if (pose?.catch && tension > 0.15) {
+    const angle = Math.atan2(tip.y - base.y, tip.x - base.x);
     const contact = new Path2D();
-    contact.ellipse(base.x, base.y, 5 + tension * 3, 2.5, -0.5, 0, 2 * Math.PI);
-    line(ctx, contact, '#f9d4b8', 1.7);
+    contact.ellipse(base.x, base.y, 3.5 + tension * 4, 1.9 + tension, angle + Math.PI / 2, 0, 2 * Math.PI);
+    line(ctx, contact, '#52312db9', 3.1);
+    line(ctx, contact, pose.catch === 'dry' ? '#c5907e' : '#fbe1c3', 1.5 + tension * 0.4);
   }
 }
 
@@ -501,14 +513,14 @@ function drawSeam(ctx, specimen, lobes) {
   return ranges;
 }
 
-function drawOpening(ctx, specimen, ranges, pose, gesture, drawInterior) {
+function drawOpening(ctx, specimen, ranges, pose, gesture, grain, drawInterior) {
   const { seam } = layoutFor(specimen);
   for (const range of ranges) {
     const cavity = cavityPath(seam, range);
     ctx.save();
     ctx.clip(cavity);
     drawInterior?.();
-    drawMembrane(ctx, specimen, pose);
+    drawMembrane(ctx, specimen, pose, grain);
     drawDamage(ctx, specimen);
     drawDiffuserContact(ctx, gesture);
     line(ctx, cavity, '#402c2440', 7);
@@ -544,11 +556,18 @@ function drawContact(ctx, gesture, seam) {
     const { normal } = closestSeam(seam, gesture.contact).sample;
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(-normal.x, normal.y));
+    ctx.scale(gesture.bunchDirection, 1);
     for (let index = 0; index < 3; index++) {
+      const rim = 9 + 6 * index + gesture.bunch * 4;
+      const height = 18 - 2 * index;
       const bend = new Path2D();
-      bend.moveTo(index * 5 - 5, -14);
-      bend.quadraticCurveTo(index * 5 - 13, 0, index * 5 - 6, 12);
-      line(ctx, bend, '#674a41', 1.2 + gesture.bunch);
+      bend.moveTo(rim, -height);
+      bend.quadraticCurveTo(rim - 11 * gesture.bunch, 0, rim, height);
+      line(ctx, bend, '#5b40379e', 2.5 + gesture.bunch);
+      ctx.save();
+      ctx.translate(1.7, 0);
+      line(ctx, bend, '#f0d6b5a9', 1.2);
+      ctx.restore();
     }
   }
   ctx.restore();
@@ -611,20 +630,19 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
   const ctx = canvas.getContext('2d');
   const tray = createTrayLayer();
   const lobes = createLobeLayer();
+  const grain = createMembraneGrain();
   const splash = createLiquidSplash(reducedMotion);
   let body;
   let seed;
   let pose = null;
+  let recoil = null;
   let release = null;
-  let previousTime = null;
 
   function draw(specimen, harvest, gesture, time, tool) {
     if (seed !== specimen.seed) {
       seed = specimen.seed;
       body = createShellLayer(seed);
     }
-    const elapsed = previousTime === null ? 16 : clamp(time - previousTime, 1, 50);
-    previousTime = time;
     const pull = gesture?.pull;
     const handle = peelHandle(specimen);
     const finished = exposed(specimen);
@@ -632,19 +650,25 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
 
     if (finished || gesture?.finished) {
       pose = null;
+      recoil = null;
     } else if (pull) {
       pose = pull;
+      recoil = null;
     } else if (pose && handle && !reducedMotion) {
-      const decay = 1 - Math.exp(-elapsed / 52);
-      pose = {
-        target: between(pose.target, handle, decay),
-        anchor: between(pose.anchor, anchors[peelFront(specimen)], decay),
-        load: pose.load * (1 - decay),
-        catch: pose.catch,
-      };
-      if (distanceSquared(pose.target, handle) < 0.8) pose = null;
+      recoil ??= { start: time, pose };
+      const elapsed = time - recoil.start;
+      const remaining = Math.exp(-elapsed / 59);
+      const spring = Math.cos(elapsed / 46) * remaining;
+      pose = elapsed < 260 ? {
+        target: between(handle, recoil.pose.target, spring),
+        anchor: between(anchors[peelFront(specimen)], recoil.pose.anchor, remaining),
+        load: recoil.pose.load * remaining,
+        catch: elapsed < 68 ? recoil.pose.catch : null,
+        pinned: recoil.pose.pinned,
+      } : null;
     } else {
       pose = null;
+      recoil = null;
     }
 
     ctx.setTransform(canvas.width / BOARD.width, 0, 0, canvas.height / BOARD.height, 0, 0);
@@ -665,7 +689,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     ctx.drawImage(body, 0, 0, BOARD.width, BOARD.height);
     const ranges = drawSeam(ctx, specimen, lobes);
     let pulsing = false;
-    drawOpening(ctx, specimen, ranges, pose, gesture, workingBlisters
+    drawOpening(ctx, specimen, ranges, pose, gesture, grain, workingBlisters
       ? () => { pulsing = drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug, failure); }
       : null);
     if (!finished && ranges.length) drawFlap(ctx, specimen, ranges, pose);
@@ -690,10 +714,12 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     splash: splash.add,
     detach(pull, torn = false) {
       pose = null;
+      recoil = null;
       if (!reducedMotion) release = { tip: pull.target, direction: pull.direction, torn, start: null };
     },
     clearMotion() {
       pose = null;
+      recoil = null;
       release = null;
       splash.clear();
     },

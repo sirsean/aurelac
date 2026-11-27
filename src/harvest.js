@@ -9,6 +9,8 @@ export const RUPTURE_DURATION = 5500;
 const nickAt = 10;
 const ruptureAt = 29;
 const foldLength = 24;
+const foldRadius = 5.6;
+const closingGrace = 110;
 const sprayDuration = 450;
 
 export const COATING_PATCHES = [
@@ -50,8 +52,9 @@ export function openBlisters(harvest, specimen, time) {
   harvest.layoutSeed = specimen.layoutSeed;
   harvest.opening = opening;
   harvest.pocket = offset(seam[Math.round((opening.start + opening.end) / 2)], 5);
-  harvest.damage.membrane = specimen.nicks.length * 2
-    + specimen.attachments.filter(({ state }) => state === 'torn').length * 4;
+  harvest.damage.incisionNicks = specimen.nicks.length;
+  harvest.damage.peelTears = specimen.attachments.filter(({ state }) => state === 'torn').length;
+  harvest.damage.membrane = harvest.damage.incisionNicks * 2 + harvest.damage.peelTears * 4;
   harvest.blisters = node.blisters.map(({ along, across, angle }, index) => {
     const segment = Math.round(opening.start + along * (opening.end - opening.start));
     const sample = seam[segment];
@@ -72,7 +75,7 @@ export function blisterPose(blister, time) {
   const phase = (Math.max(0, time - blister.started) + stagger * blister.index) % cycle;
   const settled = phase < slack;
   const swell = settled ? 0 : Math.sin((phase - slack) * Math.PI / (cycle - slack));
-  return { settled, swell };
+  return { settled, swell, slackLeft: settled ? slack - phase : 0 };
 }
 
 export function blisterFold(blister, progress) {
@@ -174,6 +177,12 @@ export function pearlIsClean(harvest) {
   return harvest.pearl.coating.every(({ amount }) => amount === 0);
 }
 
+export function casePlacement(location) {
+  const gap = distance(CASE_CENTER, location);
+  if (gap <= 16) return 'seated';
+  return gap <= 43 ? 'rim' : 'tray';
+}
+
 export function beginHarvestGesture(harvest, tool, location, blade, time = 0) {
   if (harvest.stage === 'blisters') {
     if (tool !== 'blade' && tool !== 'grip') return null;
@@ -183,23 +192,32 @@ export function beginHarvestGesture(harvest, tool, location, blade, time = 0) {
   }
   if (harvest.stage !== 'pearl' || distance(location, harvest.pearl.position) > Math.max(34, 38 * harvest.pearl.scale)) return null;
   if (tool === 'fazer') {
-    if (distance(location, harvest.pearl.position) > 35 * harvest.pearl.scale) return null;
-    return { tool, last: location, finished: false, sprayContact: location, sprayTime: time };
+    const sprayContact = distance(location, harvest.pearl.position) <= 35 * harvest.pearl.scale ? location : null;
+    return { tool, last: location, finished: false, sprayContact, sprayTime: time };
   }
-  if (tool === 'wipe' || tool === 'case') {
+  if (tool === 'case') {
+    const { x, y } = harvest.pearl.position;
+    return { tool, last: location, finished: false, gripOffset: point(x - location.x, y - location.y) };
+  }
+  if (tool === 'wipe') {
     return { tool, last: location, finished: false, roll: pearlIsClean(harvest) };
   }
   return null;
 }
 
-function cutBlister(harvest, { blister, blade }, location, travel, time) {
+function cutBlister(harvest, gesture, location, travel, time) {
+  const { blister, blade } = gesture;
   if (readyToLift(blister)) return null;
   const { center } = blister;
   const progress = foldProgress(blister, location);
   const gap = distance(blisterFold(blister, progress), location);
-  const onFold = gap < 5.6;
+  const onFold = gap < foldRadius;
   const intoTissue = distance(center, location) < 12;
-  if (onFold && blisterPose(blister, time).settled) {
+  const { settled, slackLeft } = blisterPose(blister, time);
+  if (!onFold) gesture.cutUntil = undefined;
+  else if (settled) gesture.cutUntil = time + slackLeft + closingGrace;
+  // A blade already following the fold has a moment to finish as it tightens.
+  if (onFold && time <= (gesture.cutUntil ?? -Infinity)) {
     const index = Math.min(blister.cut.length - 1, Math.floor(progress * blister.cut.length));
     const newCut = !blister.cut[index];
     blister.cut[index] = true;
@@ -256,7 +274,7 @@ export function moveHarvestGesture(harvest, gesture, location, time) {
   const pearl = harvest.pearl;
   let result = null;
   if (gesture.tool === 'case') {
-    gesture.preview = location;
+    gesture.preview = point(location.x + gesture.gripOffset.x, location.y + gesture.gripOffset.y);
   } else if (gesture.tool === 'fazer') {
     result = sprayPearl(pearl, gesture, location, time);
   } else if (gesture.roll) {
@@ -285,20 +303,11 @@ export function finishHarvestGesture(harvest, gesture) {
     return 'blister-lifted';
   }
   if (harvest.stage !== 'pearl' || gesture?.tool !== 'case' || !gesture.preview) return null;
-  const gap = distance(CASE_CENTER, gesture.preview);
-  if (gap <= 13) {
-    harvest.pearl.position = CASE_CENTER;
-    harvest.placement = 'seated';
-    return 'seated';
-  }
-  if (gap <= 43) {
-    harvest.pearl.position = gesture.preview;
-    harvest.placement = 'rim';
-    return 'rim';
-  }
-  harvest.pearl.position = PEARL_CENTER;
-  harvest.placement = 'tray';
-  return 'tray';
+  const placement = casePlacement(gesture.preview);
+  harvest.pearl.position = placement === 'seated' ? CASE_CENTER
+    : placement === 'rim' ? gesture.preview : PEARL_CENTER;
+  harvest.placement = placement;
+  return placement;
 }
 
 export function storeHarvest(harvest) {
@@ -316,7 +325,11 @@ export function storeHarvest(harvest) {
   const observations = [];
   if (ruined) observations.push('Poison gas dissolved the root pearl.');
   if (damage.scars.length && !ruined) observations.push('Acid clouding along the edge.');
-  if (damage.membrane && !ruined) observations.push('Handling marks from the peel.');
+  if (damage.membrane && !ruined) {
+    if (damage.incisionNicks) observations.push('Handling marks from blade nicks in the membrane.');
+    if (damage.peelTears) observations.push('Handling marks from torn membrane.');
+    if (damage.incisionNicks === undefined) observations.push('Handling marks from the peel.');
+  }
   if (residue && !ruined) observations.push('Coating remains on the surface.');
   if (damage.chipped) observations.push('Chipped at the case rim.');
 

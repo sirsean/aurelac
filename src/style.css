@@ -255,9 +255,11 @@ dialog dd { margin: 2px 0 13px; }
   .bench-heading { margin-bottom: 10px; }
   .bench-foot { align-items: flex-start; flex-wrap: wrap; gap: 4px 10px; }
 }
+@media (max-width: 440px) {
+  .instrument[data-stage="membrane"] .tool { flex-direction: column; gap: 2px; min-height: 55px; }
+  .instrument[data-stage="membrane"] .tool svg { width: 22px; height: 22px; }
+}
 @media (max-width: 360px) {
   .masthead-inner { flex-wrap: wrap; }
   .masthead-actions .guide-button { padding-inline: 6px; }
-  .tool { flex-direction: column; gap: 2px; min-height: 55px; }
-  .tool svg { width: 22px; height: 22px; }
 }
