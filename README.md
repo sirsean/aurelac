@@ -17,7 +17,7 @@ While the dev or preview server is running, use `npm run test:browser` to exerci
 
 ## Code layout
 
-- The incision lips and tools use the same tray coordinates, seam samples, ordered attachments, and tuning. [geometry.js](src/geometry.js)
+- The incision lips and tools share a seed-derived crease and ordered attachments. The same layout also places the blisters inside the opening. [geometry.js](src/geometry.js)
 - Cut, wetness, peel, and tear are derived from input positions. Specimen data is independent of browser state and rendering. [specimen.js](src/specimen.js)
 - Blister timing, fold geometry, coating, placement, and appraisal live in the harvest model. The renderers use the same fold and coating geometry, and rotate local damage with the clean pearl. [harvest.js](src/harvest.js) · [harvest-render.js](src/harvest-render.js) · [pearl-render.js](src/pearl-render.js)
 - The renderer clips deeper tissue to the opening and animates recoil. Append `?debug=1` to see opening width, hit regions, and pull load. [render.js](src/render.js)
@@ -49,7 +49,7 @@ Reset restores the closed specimen in either mode. The proposed gate is at least
 
 The model suite covers short-slit recovery from either end, dry catches, outward pulls, localized remnants, nicks, and sparse versus dense input sampling. Chromium 156 was exercised at 1280 × 900 with mouse input, at a narrow 320 × 640 viewport, and at 390 × 844 and 375 × 800 with touch emulation. The browser test completed a clean peel, interrupted a two-finger gesture, forced a tear, resized mid-stroke, and completed the damaged peel without resetting. A manual run on the published starter bench still caught after the first extension. Cutting the opposite end and rewetting the margin freed the flap. Fresh-player results and physical-phone performance are pending.
 
-The diffuser splashes on the exposed membrane. The sheen weakens as the fold dries, and the lip settles. Each of the three sections has its own exposed fold to wet. A fully soaked fold starts falling below the safe wetness threshold after about six seconds. The raised lips curl right, left, and right. A steady pull in the direction of the curl releases one section. The fold bunches under a wrong-way tug and tears if the pull continues hard enough. A sharp yank or a pull on a brittle fold also leaves a ragged remnant.
+The diffuser splashes on the exposed membrane. The sheen weakens as the fold dries, and the lip settles. Each section has its own exposed fold to wet. A fully soaked fold starts falling below the safe wetness threshold after about six seconds. A steady pull in the direction of the raised curl releases one section. The fold bunches under a wrong-way tug and tears if the pull continues hard enough. A sharp yank or a pull on a brittle fold also leaves a ragged remnant.
 
 Model tests cover the closed start, one section per grip, timed drying and refreshing, and clean and torn pulls in both directions. Browser checks exercise the closed start and reset, the fade and dry tear, recovery after a wrong-way tear, and three clean sections with mouse and emulated touch.
 
@@ -66,6 +66,8 @@ Chromium 156 completed pristine, flawed, and ruined harvests on BG–107. Checks
 ## Specimens and repeat harvests
 
 Select the broad, small, or rare node at the top of the tray. Shape, pearl size, intrinsic amber and clarity, and blister placement vary by node. The rare node has a shorter settled window and a subtler fold. The starting properties determine pearl size and amber depth. Handling and damage affect the clarity appraisal.
+
+Every fresh specimen has its own curved crease and two to four peel sections. Section length affects how far you need to pull. The exposed curl shows the pull direction and angle. Reloading retains the layout and existing tissue state. Reset node starts a fresh layout for the selected node type.
 
 The broad node yields honey amber, the small node cloud white, and the rare node smoky violet. Inclusions vary by harvest. The Work light brings out the color within the stone, and reflections shift across its faces as it rolls. The collection uses the same pearl art. The rounded shapes, cloudy translucency, and amber inclusions draw on the film's practical props. [Aurelac case trailer still and prop photos](https://sionnachstudios.com/prospect-behind-the-scenes-part-one-aurelac-case/)
 

@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { point } from '../src/geometry.js';
+import { layoutFor, point } from '../src/geometry.js';
 import {
   CASE_CENTER, COATING_PATCHES, PEARL_CENTER, beginHarvestGesture, blisterFold, blisterPose,
   createHarvest, dragClearsOpening, finishHarvestGesture, moveHarvestGesture, openBlisters, pearlIsClean,
   readyToLift, storeHarvest,
 } from '../src/harvest.js';
 import { COMMON_NODE, NODES } from '../src/nodes.js';
-import { createSpecimen } from '../src/specimen.js';
+import { beginGesture, createSpecimen, moveGesture, peelFront, peelHandle, peelIsWet } from '../src/specimen.js';
 
 const openedAt = 200;
 const COMMON_PEARL = COMMON_NODE.pearl;
@@ -33,13 +33,58 @@ function relaxedTime(blister, cycles = 1) {
 }
 
 function liftBlister(harvest, blister) {
-  const outside = point(blister.center.x, blister.center.y < harvest.pocket.y ? 67 : 309);
+  const outside = point(blister.center.x, blister.center.y < harvest.pocket.y ? 25 : 349);
   assert.equal(dragClearsOpening(harvest, outside), true);
   const { gesture } = stroke(harvest, 'grip', blister.center, outside);
   assert.deepEqual(gesture.preview, outside);
   assert.equal(blister.removed, false);
   return finishHarvestGesture(harvest, gesture);
 }
+
+function specimenStroke(specimen, tool, locations) {
+  const time = specimen.wetnessTime;
+  const gesture = beginGesture(specimen, tool, locations[0], time);
+  assert.ok(gesture);
+  let result;
+  for (const [index, location] of locations.slice(1).entries()) {
+    result = moveGesture(specimen, gesture, location, time + (index + 1) * 16) ?? result;
+  }
+  return result;
+}
+
+test('generated curves and folds leave a clean path to every blister', () => {
+  const pieceCounts = new Set();
+  const bendDirections = new Set();
+  for (let index = 0; index < 96; index++) {
+    const { seed } = NODES[index % NODES.length];
+    const layoutSeed = Math.imul(index, 2654435761) >>> 0;
+    const specimen = createSpecimen({ seed, layoutSeed });
+    const { seam, anchors } = layoutFor(specimen);
+    bendDirections.add(Math.sign(seam[32].y - (seam[0].y + seam[64].y) / 2));
+    assert.deepEqual(new Set(anchors.map(({ direction }) => Math.sign(direction.x))), new Set([-1, 1]));
+    assert.equal(specimenStroke(specimen, 'blade', seam.slice(12, 55)), 'cut');
+    let pieces = 0;
+    for (let front = 0; front < anchors.length; front = anchors[front].end) {
+      assert.equal(peelFront(specimen), front);
+      specimenStroke(specimen, 'diffuser', seam.slice(19, 47));
+      assert.ok(peelIsWet(specimen));
+      const handle = peelHandle(specimen);
+      const { direction, end } = anchors[front];
+      const pull = Array.from({ length: 17 }, (_, step) => point(
+        handle.x + direction.x * 4 * step, handle.y + direction.y * 4 * step,
+      ));
+      assert.equal(specimenStroke(specimen, 'grip', pull), end === anchors.length ? 'peeled' : 'piece');
+      pieces++;
+    }
+    pieceCounts.add(pieces);
+    const harvest = createHarvest(seed);
+    openBlisters(harvest, specimen, openedAt);
+    for (const blister of harvest.blisters) freeBlister(harvest, blister);
+    assert.equal(harvest.stage, 'pearl');
+  }
+  assert.deepEqual(pieceCounts, new Set([2, 3, 4]));
+  assert.deepEqual(bendDirections, new Set([-1, 1]));
+});
 
 function freeBlister(harvest, blister) {
   const { event, gesture } = stroke(harvest, 'blade', blisterFold(blister, 0), blisterFold(blister, 1),

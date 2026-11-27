@@ -1,4 +1,4 @@
-import { ATTACHMENTS, TUNING, clamp } from './geometry.js';
+import { TUNING, clamp, layoutFor } from './geometry.js';
 import { COATING_PATCHES } from './harvest.js';
 import { NODES } from './nodes.js';
 import { dryMembrane } from './specimen.js';
@@ -38,8 +38,9 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   const { id, specimen, harvest, blade } = saved;
   const node = NODES.find(({ seed }) => seed === specimen?.seed);
   if (!node || harvest?.seed !== node.seed || !stages.includes(harvest.stage)
+    || (specimen.layoutSeed !== undefined && specimen.layoutSeed !== (specimen.layoutSeed >>> 0))
     || !Array.isArray(specimen.cut) || specimen.cut.length !== TUNING.seamSegments
-    || !Array.isArray(specimen.attachments) || specimen.attachments.length !== ATTACHMENTS.length
+    || !Array.isArray(specimen.attachments) || specimen.attachments.length !== layoutFor(specimen).anchors.length
     || !Array.isArray(specimen.nicks) || !Number.isFinite(specimen.wetnessTime)
     || !Array.isArray(harvest.blisters) || !Array.isArray(harvest.damage?.scars)
     || !Array.isArray(harvest.pearl?.coating) || harvest.pearl.coating.length !== COATING_PATCHES.length
@@ -49,6 +50,7 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   const shift = clock - saved.clock - Math.max(0, wall - saved.wall);
   specimen.wetnessTime += shift;
   dryMembrane(specimen, clock);
+  harvest.layoutSeed = specimen.layoutSeed;
   harvest.intrinsic = node.pearl;
   harvest.pearl.pattern ??= node.seed;
   for (const coating of harvest.pearl.coating) {

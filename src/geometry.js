@@ -55,33 +55,79 @@ export function seamPoint(t) {
   return between(between(left, middle, t), between(middle, right, t), t);
 }
 
-function seamSample(t) {
-  const before = seamPoint(t - 0.001);
-  const after = seamPoint(t + 0.001);
+function seamSample(pointAt, t) {
+  const before = pointAt(t - 0.001);
+  const after = pointAt(t + 0.001);
   const length = distance(before, after);
   const normal = point((before.y - after.y) / length, (after.x - before.x) / length);
-  return { ...seamPoint(t), normal, t };
+  return { ...pointAt(t), normal, t };
 }
 
 export function offset(sample, amount) {
   return point(sample.x + sample.normal.x * amount, sample.y + sample.normal.y * amount);
 }
 
-export const SEAM = Array.from(
-  { length: TUNING.seamSegments + 1 },
-  (_, index) => seamSample(index / TUNING.seamSegments),
-);
+function sampleSeam(pointAt) {
+  return Array.from({ length: TUNING.seamSegments + 1 },
+    (_, index) => seamSample(pointAt, index / TUNING.seamSegments));
+}
 
 const right = point(0.94, 0.342);
 const left = point(-0.94, 0.342);
-const sectionDirections = [right, left, right];
-const attachmentCount = sectionDirections.length * TUNING.attachmentsPerSection;
 
-export const ATTACHMENTS = Array.from({ length: attachmentCount }, (_, index) => {
-  const sample = seamSample(mix(0.65, 0.37, index / (attachmentCount - 1)));
-  const direction = sectionDirections[Math.floor(index / TUNING.attachmentsPerSection)];
-  return { ...offset(sample, -6), seamT: sample.t, direction };
-});
+function makeAttachments(pointAt, pieces, first, last) {
+  const total = pieces.reduce((sum, { size }) => sum + size, 0);
+  let start = 0;
+  return pieces.flatMap(({ size, direction }) => {
+    const end = start + size;
+    const anchors = Array.from({ length: size }, (_, index) => {
+      const sample = seamSample(pointAt, mix(first, last, (start + index) / (total - 1)));
+      return { ...offset(sample, -6), seamT: sample.t, direction, end, size };
+    });
+    start = end;
+    return anchors;
+  });
+}
+
+export const SEAM = sampleSeam(seamPoint);
+export const ATTACHMENTS = makeAttachments(seamPoint,
+  [right, left, right].map((direction) => ({ size: TUNING.attachmentsPerSection, direction })), 0.65, 0.37);
+
+const layouts = new WeakMap();
+const originalLayout = { seam: SEAM, anchors: ATTACHMENTS };
+
+function generateLayout(seed) {
+  const random = randomFrom(seed);
+  const startX = mix(96, 102, random());
+  const endX = mix(299, 304, random());
+  const startY = mix(146, 214, random());
+  const endY = mix(158, 228, random());
+  const bow = (random() < 0.5 ? -1 : 1) * mix(17, 40, random());
+  const skew = mix(-12, 12, random());
+  // Sweep smoothly from left to right so the lips stay traceable even when the curve reverses.
+  const pointAt = (t) => point(mix(startX, endX, t),
+    mix(startY, endY, t) + 4 * t * (1 - t) * (bow + skew * (2 * t - 1)));
+
+  const count = 2 + Math.floor(random() * 3);
+  const firstFacing = random() < 0.5 ? -1 : 1;
+  const reverse = 1 + Math.floor(random() * (count - 1));
+  const pieces = Array.from({ length: count }, (_, index) => {
+    const facing = index === 0 ? firstFacing : index === reverse ? -firstFacing : random() < 0.5 ? -1 : 1;
+    const angle = mix(-0.32, 0.62, random());
+    return { size: 3 + Math.floor(random() * 3), direction: point(facing * Math.cos(angle), Math.sin(angle)) };
+  });
+  return {
+    seam: sampleSeam(pointAt),
+    anchors: makeAttachments(pointAt, pieces, mix(0.63, 0.72, random()), mix(0.30, 0.40, random())),
+  };
+}
+
+// Saved runs carry just the seed. Runs made before generated layouts keep the original geometry.
+export function layoutFor(state) {
+  if (state.layoutSeed === undefined) return originalLayout;
+  if (!layouts.has(state)) layouts.set(state, generateLayout(state.layoutSeed));
+  return layouts.get(state);
+}
 
 export const LOBE_WIDTH = 102;
 
@@ -110,14 +156,14 @@ export function openingHalfWidth(range, index) {
   return Math.min(range.width / 2, 75) * taper;
 }
 
-export function openingLip(range, index, side) {
-  return offset(SEAM[index], side * openingHalfWidth(range, index));
+export function openingLip(seam, range, index, side) {
+  return offset(seam[index], side * openingHalfWidth(range, index));
 }
 
-export function closestSeam(location) {
+export function closestSeam(seam, location) {
   let best;
-  for (let index = 0; index < SEAM.length; index++) {
-    const sample = SEAM[index];
+  for (let index = 0; index < seam.length; index++) {
+    const sample = seam[index];
     const gap = distance(sample, location);
     if (!best || gap < best.gap) best = { index, sample, gap };
   }

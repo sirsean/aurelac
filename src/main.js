@@ -205,7 +205,8 @@ function finishGesture() {
 function startNode(seed) {
   finishGesture();
   const node = nodeFor(seed);
-  specimen = createSpecimen({ seed: node.seed });
+  const layoutSeed = Math.floor(Math.random() * 0x100000000);
+  specimen = createSpecimen({ seed: node.seed, layoutSeed });
   const undercoatPatch = Math.random() < 1 / 3 ? Math.floor(Math.random() * COATING_PATCHES.length) : -1;
   const pattern = Math.floor(Math.random() * 0x100000000);
   harvest = createHarvest(node.seed, { undercoatPatch, pattern });

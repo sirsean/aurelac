@@ -1,4 +1,4 @@
-import { SEAM, between, clamp, closestSeam, distance, offset, openingAt, openingHalfWidth, point } from './geometry.js';
+import { SEAM, between, clamp, closestSeam, distance, layoutFor, offset, openingAt, openingHalfWidth, point } from './geometry.js';
 import { COMMON_NODE, nodeFor } from './nodes.js';
 import { wearBlade } from './blade.js';
 
@@ -46,16 +46,20 @@ export function openBlisters(harvest, specimen, time) {
   const opening = openingAt(specimen.cut, 0.51);
   if (!opening) return;
   const node = nodeFor(specimen.seed);
+  const { seam } = layoutFor(specimen);
+  harvest.layoutSeed = specimen.layoutSeed;
   harvest.opening = opening;
-  harvest.pocket = offset(SEAM[Math.round((opening.start + opening.end) / 2)], 5);
+  harvest.pocket = offset(seam[Math.round((opening.start + opening.end) / 2)], 5);
   harvest.damage.membrane = specimen.nicks.length * 2
     + specimen.attachments.filter(({ state }) => state === 'torn').length * 4;
   harvest.blisters = node.blisters.map(({ along, across, angle }, index) => {
     const segment = Math.round(opening.start + along * (opening.end - opening.start));
-    const seam = SEAM[segment];
-    const center = offset(seam, openingHalfWidth(opening, segment) * across);
+    const sample = seam[segment];
+    const center = offset(sample, openingHalfWidth(opening, segment) * across);
+    const original = SEAM[segment].normal;
+    const tilt = Math.atan2(sample.normal.y, sample.normal.x) - Math.atan2(original.y, original.x);
     return {
-      center, index, axis: point(Math.cos(angle), Math.sin(angle)),
+      center, index, axis: point(Math.cos(angle + tilt), Math.sin(angle + tilt)),
       cut: Array(5).fill(false), acid: 0, removed: false, started: time,
       timing: node.timing, foldContrast: node.foldContrast,
     };
@@ -106,8 +110,9 @@ function findBlister(harvest, location, tool) {
 
 export function dragClearsOpening(harvest, location) {
   const { opening } = harvest;
-  const index = clamp(closestSeam(location).index, opening.start, opening.end);
-  return distance(location, SEAM[index]) > openingHalfWidth(opening, index) + 10;
+  const { seam } = layoutFor(harvest);
+  const index = clamp(closestSeam(seam, location).index, opening.start, opening.end);
+  return distance(location, seam[index]) > openingHalfWidth(opening, index) + 10;
 }
 
 function sprayPearl(pearl, gesture, location, time) {

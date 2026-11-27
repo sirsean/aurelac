@@ -1,5 +1,5 @@
 import {
-  ATTACHMENTS, BOARD, SEAM, TUNING, between, clamp, closestSeam, mix, openingLip, openings, point, randomFrom,
+  BOARD, TUNING, between, clamp, closestSeam, layoutFor, mix, openingLip, openings, point, randomFrom,
 } from './geometry.js';
 import { createLiquidSplash } from './liquid-splash.js';
 import { drawBlisters, drawLiftedBlisters, drawPearlBench, drawRuptureGas, rupturePose } from './harvest-render.js';
@@ -193,12 +193,12 @@ function createTrayLayer() {
   return layer;
 }
 
-function cavityPath(range) {
+function cavityPath(seam, range) {
   const top = [];
   const bottom = [];
   for (let index = range.start; index <= range.end; index++) {
-    top.push(openingLip(range, index, -1));
-    bottom.unshift(openingLip(range, index, 1));
+    top.push(openingLip(seam, range, index, -1));
+    bottom.unshift(openingLip(seam, range, index, 1));
   }
   const path = new Path2D();
   smoothLine(path, top);
@@ -236,13 +236,14 @@ function drawMembrane(ctx, specimen, pose) {
   const front = peelFront(specimen);
   if (front < 0) return;
 
-  const base = ATTACHMENTS[front];
+  const { anchors } = layoutFor(specimen);
+  const base = anchors[front];
   const unstretched = peelHandle(specimen, front);
   const bend = pose?.catch === 'angle' ? 0 : (pose?.load ?? 0);
   const loadPoint = pose?.anchor ?? base;
   const target = pose?.target ?? unstretched;
   const cover = new Path2D();
-  const spread = front / ATTACHMENTS.length;
+  const spread = front / anchors.length;
   const edgeX = mix(355, base.x - 22, spread);
   const foldX = mix(base.x + 29 - 40 * spread, loadPoint.x, bend);
   cover.moveTo(edgeX, 61);
@@ -270,16 +271,15 @@ function drawMembrane(ctx, specimen, pose) {
     const looseFold = new Path2D('M110 152Q130 175 156 172T197 190T234 198');
     line(ctx, looseFold, '#f3b5a482', 1.5);
   }
-  drawSectionFolds(ctx, front);
-  drawWetness(ctx, specimen);
+  drawSectionFolds(ctx, anchors, front);
+  drawWetness(ctx, specimen, anchors);
   ctx.restore();
 }
 
-function drawSectionFolds(ctx, front) {
-  const size = TUNING.attachmentsPerSection;
-  for (let boundary = size; boundary < ATTACHMENTS.length; boundary += size) {
+function drawSectionFolds(ctx, anchors, front) {
+  for (let boundary = anchors[0].end; boundary < anchors.length; boundary = anchors[boundary].end) {
     if (boundary <= front) continue;
-    const { x, y } = between(ATTACHMENTS[boundary - 1], ATTACHMENTS[boundary], 0.5);
+    const { x, y } = between(anchors[boundary - 1], anchors[boundary], 0.5);
     const fold = new Path2D();
     fold.moveTo(x + 21, y - 37);
     fold.bezierCurveTo(x - 1, y - 18, x + 9, y + 9, x - 21, y + 35);
@@ -295,10 +295,10 @@ function distanceSquared(a, b) {
   return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 }
 
-function drawWetness(ctx, specimen) {
+function drawWetness(ctx, specimen, anchors) {
   for (const [index, attachment] of specimen.attachments.entries()) {
     if (attachment.state !== 'attached' || attachment.wetness <= 0) continue;
-    const { x, y } = ATTACHMENTS[index];
+    const { x, y } = anchors[index];
     const wash = ctx.createRadialGradient(x, y + 6, 1, x, y + 6, 27);
     wash.addColorStop(0, '#713d4392');
     wash.addColorStop(1, '#713d4300');
@@ -338,14 +338,14 @@ function drawDiffuserContact(ctx, gesture) {
 function drawFlap(ctx, specimen, ranges, pose) {
   const front = peelFront(specimen);
   if (front === -1) return;
+  const attachment = layoutFor(specimen).anchors[front];
+  const segment = attachment.seamT * specimen.cut.length;
   const range = ranges.find(({ start, end }) =>
-    start <= ATTACHMENTS[front].seamT * TUNING.seamSegments
-      && end >= ATTACHMENTS[front].seamT * TUNING.seamSegments);
+    start <= segment && end >= segment);
   if (!range) return;
   const wet = specimen.attachments[front].wetness;
 
   const tip = pose?.target ?? peelHandle(specimen, front);
-  const attachment = ATTACHMENTS[front];
   const base = pose?.anchor ?? attachment;
   const tension = pose?.load ?? 0;
   const bunch = pose?.catch === 'angle' ? tension : 0;
@@ -356,7 +356,7 @@ function drawFlap(ctx, specimen, ranges, pose) {
   const turn = clamp(Math.atan2(dy, dx) - direction, -0.48, 0.48);
   const angle = direction + turn;
   const length = Math.max(8, dx * Math.cos(angle) + dy * Math.sin(angle));
-  const width = mix(7 + 7 * wet, 19, tension);
+  const width = mix((7 + 7 * wet) * (0.6 + 0.1 * attachment.size), 19, tension);
   const rim = mix(3, 10, wet);
 
   ctx.save();
@@ -450,12 +450,13 @@ function drawDetachedFlap(ctx, { tip, direction, torn }, progress) {
 }
 
 function drawDamage(ctx, specimen) {
+  const { anchors } = layoutFor(specimen);
   for (const [index, attachment] of specimen.attachments.entries()) {
     if (!attachment.tearAt) continue;
     const { x, y } = attachment.tearAt;
     ctx.save();
     ctx.translate(x, y);
-    ctx.scale(Math.sign(ATTACHMENTS[index].direction.x), 1);
+    ctx.scale(Math.sign(anchors[index].direction.x), 1);
     const remnant = new Path2D();
     remnant.moveTo(0, 0);
     remnant.bezierCurveTo(7, -3, 12, -24, 35, -24);
@@ -481,15 +482,16 @@ function drawDamage(ctx, specimen) {
 }
 
 function drawSeam(ctx, specimen, lobes) {
+  const { seam } = layoutFor(specimen);
   // The same seam samples determine the playable cut and its visible lips.
   const lip = new Path2D();
-  smoothLine(lip, SEAM);
+  smoothLine(lip, seam);
   line(ctx, lip, '#f3d8b885', 4);
-  line(ctx, lip, '#624c3f', 1.25);
+  line(ctx, lip, '#503a2e', 1.6);
 
   const ranges = openings(specimen.cut);
   for (const range of ranges) {
-    const cavity = cavityPath(range);
+    const cavity = cavityPath(seam, range);
     fill(ctx, cavity, radial(ctx, 215, 171, 135, ['#785542', '#52382e', '#312322']));
     ctx.save();
     ctx.clip(cavity);
@@ -500,8 +502,9 @@ function drawSeam(ctx, specimen, lobes) {
 }
 
 function drawOpening(ctx, specimen, ranges, pose, gesture, drawInterior) {
+  const { seam } = layoutFor(specimen);
   for (const range of ranges) {
-    const cavity = cavityPath(range);
+    const cavity = cavityPath(seam, range);
     ctx.save();
     ctx.clip(cavity);
     drawInterior?.();
@@ -514,7 +517,7 @@ function drawOpening(ctx, specimen, ranges, pose, gesture, drawInterior) {
 
     const guard = [];
     for (let index = range.start + 1; index < range.end; index++) {
-      guard.push(openingLip(range, index, 1));
+      guard.push(openingLip(seam, range, index, 1));
     }
     if (guard.length > 1) {
       const light = new Path2D();
@@ -527,7 +530,7 @@ function drawOpening(ctx, specimen, ranges, pose, gesture, drawInterior) {
   }
 }
 
-function drawContact(ctx, gesture) {
+function drawContact(ctx, gesture, seam) {
   if (gesture?.tool !== 'blade') return;
   const { x, y } = gesture.contact;
   ctx.save();
@@ -538,7 +541,7 @@ function drawContact(ctx, gesture) {
   ctx.fillStyle = depression;
   ctx.fillRect(x - 21, y - 21, 42, 42);
   if (gesture.bunch) {
-    const { normal } = closestSeam(gesture.contact).sample;
+    const { normal } = closestSeam(seam, gesture.contact).sample;
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(-normal.x, normal.y));
     for (let index = 0; index < 3; index++) {
@@ -581,17 +584,18 @@ function drawStone(ctx, gesture) {
 }
 
 function drawDebug(ctx, specimen, pose) {
+  const { seam, anchors } = layoutFor(specimen);
   ctx.font = '10px monospace';
   ctx.fillStyle = '#fff4d9';
   ctx.fillRect(10, 13, 170, 37);
   ctx.fillStyle = '#1b211a';
   ctx.fillText(`Opening ${openings(specimen.cut).map(({ fraction }) => fraction.toFixed(2)).join(' ') || '0.00'}`, 15, 26);
   ctx.fillText(`Load ${(pose?.load ?? 0).toFixed(2)} ${pose?.catch ?? ''}`, 15, 42);
-  for (const sample of SEAM) {
+  for (const sample of seam) {
     ctx.fillStyle = '#8ee6f2';
     ctx.fillRect(sample.x, sample.y, 1.5, 1.5);
   }
-  for (const [index, base] of ATTACHMENTS.entries()) {
+  for (const [index, base] of anchors.entries()) {
     const { state, wetness } = specimen.attachments[index];
     ctx.fillStyle = state === 'attached' ? `rgba(112,197,225,${0.3 + wetness * 0.7})` : '#eef585';
     ctx.fillRect(base.x - 2, base.y - 2, 4, 4);
@@ -624,6 +628,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
     const pull = gesture?.pull;
     const handle = peelHandle(specimen);
     const finished = exposed(specimen);
+    const { seam, anchors } = layoutFor(specimen);
 
     if (finished || gesture?.finished) {
       pose = null;
@@ -633,7 +638,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
       const decay = 1 - Math.exp(-elapsed / 52);
       pose = {
         target: between(pose.target, handle, decay),
-        anchor: between(pose.anchor, ATTACHMENTS[peelFront(specimen)], decay),
+        anchor: between(pose.anchor, anchors[peelFront(specimen)], decay),
         load: pose.load * (1 - decay),
         catch: pose.catch,
       };
@@ -664,7 +669,7 @@ export function createRenderer(canvas, { debug = false, reducedMotion = false } 
       ? () => { pulsing = drawBlisters(ctx, harvest, gesture, time, reducedMotion, debug, failure); }
       : null);
     if (!finished && ranges.length) drawFlap(ctx, specimen, ranges, pose);
-    if (!workingBlisters) drawContact(ctx, gesture);
+    if (!workingBlisters) drawContact(ctx, gesture, seam);
     ctx.restore();
     if (workingBlisters) drawLiftedBlisters(ctx, harvest, gesture, failure?.frozenAt ?? time, reducedMotion);
     if (failure) drawRuptureGas(ctx, harvest.pocket, failure);

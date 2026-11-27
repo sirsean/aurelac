@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { ATTACHMENTS, BOARD, SEAM, TUNING, offset, seamPoint } from '../src/geometry.js';
+import { ATTACHMENTS, BOARD, SEAM, TUNING, layoutFor, offset, seamPoint } from '../src/geometry.js';
 import { STONE } from '../src/blade.js';
 import { CASE_CENTER, COATING_PATCHES, PEARL_CENTER, RUPTURE_DURATION, blisterFold, createHarvest, openBlisters } from '../src/harvest.js';
 import { COMMON_NODE, NODES, nodeCode } from '../src/nodes.js';
-import { beginGesture, createSpecimen, moveGesture } from '../src/specimen.js';
+import { beginGesture, createSpecimen, moveGesture, peelFront, peelHandle } from '../src/specimen.js';
 
 const baseUrl = process.env.AURELAC_TEST_URL ?? 'http://127.0.0.1:3000';
 const executablePath = process.env.AURELAC_CHROMIUM
@@ -114,12 +114,32 @@ async function screenshot(page, name) {
   await page.screenshot({ path: `playtest-results/${name}.png` });
 }
 
-async function setUp(page, route = '/') {
+async function originalAnatomy(page) {
+  // These scripted regressions replay gestures on saves from the original bench.
+  await page.evaluate((specimen) => {
+    const key = 'aurelac.workbench.v1';
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.specimen = specimen;
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, createSpecimen());
+  await page.reload();
+}
+
+async function setUp(page, route = '/', generated = false) {
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
   assert.equal((await page.goto(new URL(route, baseUrl).href)).status(), 200);
   await page.getByRole('heading', { name: 'Harvest bench' }).waitFor();
+  if (!generated) await originalAnatomy(page);
   return problems;
+}
+
+async function touchPath(page, send, positions, result) {
+  const samples = await Promise.all(positions.map((position) => boardPoint(page, position)));
+  await send('touchStart', [samples[0]]);
+  for (const sample of samples.slice(1)) await send('touchMove', [sample]);
+  if (result) await expectStatus(page, result);
+  await send('touchEnd', []);
 }
 
 async function checkFit(page) {
@@ -355,6 +375,7 @@ try {
 
   await page.setViewportSize({ width: 320, height: 640 });
   await page.getByRole('button', { name: 'Reset node' }).click();
+  await originalAnatomy(page);
   await checkFit(page);
   await expectIntact(page);
   await screenshot(page, 'narrow-intact');
@@ -406,14 +427,7 @@ try {
   assert.ok(await touch.getByRole('button', { name: 'Field guide' }).isHidden());
   const cdp = await touch.context().newCDPSession(touch);
   const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
-
-  async function swipe(positions, result) {
-    const samples = await Promise.all(positions.map((position) => boardPoint(touch, position)));
-    await send('touchStart', [samples[0]]);
-    for (const sample of samples.slice(1)) await send('touchMove', [sample]);
-    if (result) await expectStatus(touch, result);
-    await send('touchEnd', []);
-  }
+  const swipe = (positions, result) => touchPath(touch, send, positions, result);
 
   await swipe([0.34, 0.4, 0.47, 0.54, 0.61, 0.68].map(seamPoint));
   await selectTool(touch, 'Diffuser', 'touch');
@@ -568,7 +582,47 @@ try {
   assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Sound' }).isChecked(), true);
   assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Haptics' }).isChecked(), true);
   assert.deepEqual(feedbackErrors, []);
-  console.log(`Passed three silhouettes, pristine, flawed and ruined harvests, reload, collection, sharpening and material feedback checks in Chromium ${browser.version()}.`);
+
+  const replay = await browser.newPage({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true });
+  const replayErrors = await setUp(replay, '/', true);
+  const savedSpecimen = () => replay.evaluate(() => JSON.parse(localStorage.getItem('aurelac.workbench.v1')).specimen);
+  const session = await replay.context().newCDPSession(replay);
+  const touchReplay = (positions, result) => touchPath(replay,
+    (type, touchPoints) => session.send('Input.dispatchTouchEvent', { type, touchPoints }), positions, result);
+  const fresh = await savedSpecimen();
+  const { seam, anchors } = layoutFor(fresh);
+  assert.ok(Number.isInteger(fresh.layoutSeed));
+  await expectIntact(replay);
+  await screenshot(replay, 'touch-generated-crease');
+  await touchReplay(seam.slice(12, 55), 'Pink tissue is exposed');
+  const cut = await savedSpecimen();
+  await replay.reload();
+  assert.equal((await savedSpecimen()).layoutSeed, fresh.layoutSeed);
+  assert.deepEqual((await savedSpecimen()).cut, cut.cut);
+
+  for (let front = 0; front < anchors.length; front = anchors[front].end) {
+    const { end, direction } = anchors[front];
+    await selectTool(replay, 'Diffuser', 'touch');
+    await touchReplay(seam.slice(19, 47), 'fold is glossy');
+    await selectTool(replay, 'Grip', 'touch');
+    const wetted = await savedSpecimen();
+    assert.equal(peelFront(wetted), front);
+    const handle = peelHandle(wetted);
+    const pulls = Array.from({ length: 16 }, (_, index) => ({
+      x: handle.x + direction.x * 64 * index / 15, y: handle.y + direction.y * 64 * index / 15,
+    }));
+    await screenshot(replay, `touch-generated-fold-${front}`);
+    await touchReplay(pulls, end === anchors.length ? 'membrane is free' : 'One section came free');
+  }
+  await expectCleanLobe(replay);
+  await replay.getByRole('button', { name: 'Reset node' }).click();
+  await expectIntact(replay);
+  const next = await savedSpecimen();
+  assert.notDeepEqual(layoutFor(next).seam, seam);
+  assert.notDeepEqual(layoutFor(next).anchors, anchors);
+  await screenshot(replay, 'touch-generated-next-crease');
+  assert.deepEqual(replayErrors, []);
+  console.log(`Passed generated touch anatomy, original harvest regressions, reload, collection, sharpening and feedback in Chromium ${browser.version()}.`);
 } finally {
   await browser.close();
 }
