@@ -1,3 +1,4 @@
+import { createFeedbackSettings } from './feedback.js';
 import { TUNING, clamp, layoutFor } from './geometry.js';
 import { COATING_PATCHES } from './harvest.js';
 import { NODES } from './nodes.js';
@@ -65,7 +66,7 @@ export function loadWorkbench(storage, clock, wall = Date.now()) {
   }
   if (harvest.rupture) harvest.rupture.at += shift;
   blade.wear = clamp(blade.wear);
-  const settings = { sound: saved.settings?.sound === true, haptics: saved.settings?.haptics === true };
+  const settings = createFeedbackSettings(saved.settings);
   return { id, specimen, harvest, blade, settings };
 }
 

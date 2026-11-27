@@ -9,7 +9,7 @@ import { COMMON_NODE, nodeCode, nodeFor } from './nodes.js';
 import { beginSharpening, bladeDrag, createBlade, sharpenBlade } from './blade.js';
 import { collectedPearls, loadWorkbench, recordPearl, saveWorkbench } from './save.js';
 import { createRenderer } from './render.js';
-import { createFeedback } from './feedback.js';
+import { createFeedback, createFeedbackSettings } from './feedback.js';
 import { drawPearlThumbnail, pearlColorName } from './pearl-render.js';
 
 const params = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const bladeFlat = document.querySelector('#blade-flat');
 const collection = document.querySelector('#collection');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const renderer = createRenderer(canvas, { debug, reducedMotion });
-const settings = { sound: false, haptics: false };
+const settings = createFeedbackSettings();
 const effects = createFeedback(settings);
 
 let specimen = createSpecimen();

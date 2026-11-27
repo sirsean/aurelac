@@ -75,6 +75,7 @@ test('a versioned save restores the selected node, damage, tool wear and phase o
   assert.equal(saveWorkbench(storage, { id: 'rare-run', specimen, harvest, blade }, 500, 10000), true);
   const resumed = loadWorkbench(storage, 50, 11000);
   assert.equal(resumed.id, 'rare-run');
+  assert.deepEqual(resumed.settings, { sound: true, haptics: true });
   assert.equal(resumed.specimen.seed, 391);
   assert.deepEqual(resumed.specimen.cut, specimen.cut);
   assert.ok(resumed.specimen.attachments[0].wetness < 1);

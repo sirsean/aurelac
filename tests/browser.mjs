@@ -565,22 +565,26 @@ try {
     Object.defineProperty(navigator, 'vibrate', { value: () => { window.feedbackCalls.haptics++; } });
   });
   const feedbackErrors = await setUp(feedbackBench);
-  await trace(feedbackBench, 0.34, 0.68);
-  await expectStatus(feedbackBench, 'Pink tissue is exposed');
   assert.deepEqual(await feedbackBench.evaluate(() => window.feedbackCalls), { sound: 0, haptics: 0 });
-  await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
-  for (const name of ['Sound', 'Haptics']) {
-    const option = feedbackBench.getByRole('checkbox', { name });
-    assert.equal(await option.isChecked(), false);
-    await option.check();
-  }
-  await feedbackBench.locator('#guide').getByRole('button', { name: 'Close' }).click();
-  await trace(feedbackBench, 0.63, 0.9);
-  await feedbackBench.waitForFunction(() => window.feedbackCalls.sound > 0 && window.feedbackCalls.haptics > 0);
-  await feedbackBench.reload();
   await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
   assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Sound' }).isChecked(), true);
   assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Haptics' }).isChecked(), true);
+  await feedbackBench.locator('#guide').getByRole('button', { name: 'Close' }).click();
+  await trace(feedbackBench, 0.34, 0.68);
+  await expectStatus(feedbackBench, 'Pink tissue is exposed');
+  await feedbackBench.waitForFunction(() => window.feedbackCalls.sound > 0 && window.feedbackCalls.haptics > 0);
+  await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
+  for (const name of ['Sound', 'Haptics']) {
+    await feedbackBench.getByRole('checkbox', { name }).uncheck();
+  }
+  await feedbackBench.locator('#guide').getByRole('button', { name: 'Close' }).click();
+  const beforeMute = await feedbackBench.evaluate(() => window.feedbackCalls);
+  await trace(feedbackBench, 0.63, 0.9);
+  assert.deepEqual(await feedbackBench.evaluate(() => window.feedbackCalls), beforeMute);
+  await feedbackBench.reload();
+  await feedbackBench.getByRole('button', { name: 'Field guide' }).click();
+  assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Sound' }).isChecked(), false);
+  assert.equal(await feedbackBench.getByRole('checkbox', { name: 'Haptics' }).isChecked(), false);
   assert.deepEqual(feedbackErrors, []);
 
   const replay = await browser.newPage({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true });

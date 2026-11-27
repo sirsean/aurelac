@@ -10,6 +10,10 @@ const cues = {
 };
 const longestCue = Math.max(...Object.values(cues).map(({ duration }) => duration));
 
+export function createFeedbackSettings(saved) {
+  return { sound: saved?.sound !== false, haptics: saved?.haptics !== false };
+}
+
 export function createFeedback(settings) {
   let audio;
   let noise;

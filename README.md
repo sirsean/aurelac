@@ -73,6 +73,6 @@ The broad node yields honey amber, the small node cloud white, and the rare node
 
 The Blade gradually dulls through repeated cuts. When the husk starts to bunch, select Stone and draw the blade back and forth on it. Reloading the bench preserves the incision, damage, harvest stage, and blade condition. The membrane continues drying while the bench is closed. Collection lists stored pearls in the current browser, including their source node and appraisal. Ruined pearls appear in the loss appraisal.
 
-Sound and Haptics are independent Field guide options and start off. The bench remembers them in the current browser. Use the options on a phone to compare the cut, spray, and tear cues with and without sound and vibration.
+Sound and Haptics start on when no preference is saved. Toggle them independently in the Field guide. The bench remembers both choices in the current browser, and vibration is available on supported devices.
 
 On a fresh phone browser, ask first-time and practiced players to try the broad node and then the rare node. Listen for what tells them a fold is ready and whether they recognize a missed cut. After repeat harvests, observe whether they notice blade drag and choose Stone, and whether they can connect any appraisal flaw to the handling that caused it. Compare one-handed and two-finger runs. Physical-phone and fresh-player observations are pending.
